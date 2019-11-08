@@ -58,107 +58,6 @@ type QuantizedMeshHeader struct {
 	HorizonOcclusionPointZ float64
 }
 
-func (h *QuantizedMeshHeader) Read(reader io.Reader) error {
-	buf := make([]byte, 8)
-	if _, err := reader.Read(buf); err != nil {
-		return err
-	}
-	h.CenterX = math.Float64frombits(byteOrder.Uint64(buf))
-	if _, err := reader.Read(buf); err != nil {
-		return err
-	}
-	h.CenterY = math.Float64frombits(byteOrder.Uint64(buf))
-	if _, err := reader.Read(buf); err != nil {
-		return err
-	}
-	h.CenterZ = math.Float64frombits(byteOrder.Uint64(buf))
-	buf = make([]byte, 4)
-	if _, err := reader.Read(buf); err != nil {
-		return err
-	}
-	h.MinimumHeight = math.Float32frombits(byteOrder.Uint32(buf))
-	if _, err := reader.Read(buf); err != nil {
-		return err
-	}
-	h.MaximumHeight = math.Float32frombits(byteOrder.Uint32(buf))
-	buf = make([]byte, 8)
-	if _, err := reader.Read(buf); err != nil {
-		return err
-	}
-	h.BoundingSphereCenterX = math.Float64frombits(byteOrder.Uint64(buf))
-	if _, err := reader.Read(buf); err != nil {
-		return err
-	}
-	h.BoundingSphereCenterY = math.Float64frombits(byteOrder.Uint64(buf))
-	if _, err := reader.Read(buf); err != nil {
-		return err
-	}
-	h.BoundingSphereCenterZ = math.Float64frombits(byteOrder.Uint64(buf))
-	if _, err := reader.Read(buf); err != nil {
-		return err
-	}
-	h.BoundingSphereRadius = math.Float64frombits(byteOrder.Uint64(buf))
-
-	if _, err := reader.Read(buf); err != nil {
-		return err
-	}
-	h.HorizonOcclusionPointX = math.Float64frombits(byteOrder.Uint64(buf))
-	if _, err := reader.Read(buf); err != nil {
-		return err
-	}
-	h.HorizonOcclusionPointY = math.Float64frombits(byteOrder.Uint64(buf))
-	if _, err := reader.Read(buf); err != nil {
-		return err
-	}
-	h.HorizonOcclusionPointZ = math.Float64frombits(byteOrder.Uint64(buf))
-	return nil
-}
-
-func (h *QuantizedMeshHeader) Write(writer io.Writer) error {
-	buf := make([]byte, QUANTIZED_MESH_HEADER_SIZE)
-	offset := 0
-	bs := math.Float64bits(h.CenterX)
-	byteOrder.PutUint64(buf[offset:offset+8], bs)
-	offset += 8
-	bs = math.Float64bits(h.CenterY)
-	byteOrder.PutUint64(buf[offset:offset+8], bs)
-	offset += 8
-	bs = math.Float64bits(h.CenterZ)
-	byteOrder.PutUint64(buf[offset:offset+8], bs)
-	offset += 8
-	bs2 := math.Float32bits(h.MinimumHeight)
-	byteOrder.PutUint32(buf[offset:offset+4], bs2)
-	offset += 4
-	bs2 = math.Float32bits(h.MaximumHeight)
-	byteOrder.PutUint32(buf[offset:offset+4], bs2)
-	offset += 4
-	bs = math.Float64bits(h.BoundingSphereCenterX)
-	byteOrder.PutUint64(buf[offset:offset+8], bs)
-	offset += 8
-	bs = math.Float64bits(h.BoundingSphereCenterY)
-	byteOrder.PutUint64(buf[offset:offset+8], bs)
-	offset += 8
-	bs = math.Float64bits(h.BoundingSphereCenterZ)
-	byteOrder.PutUint64(buf[offset:offset+8], bs)
-	offset += 8
-	bs = math.Float64bits(h.BoundingSphereRadius)
-	byteOrder.PutUint64(buf[offset:offset+8], bs)
-	offset += 8
-	bs = math.Float64bits(h.HorizonOcclusionPointX)
-	byteOrder.PutUint64(buf[offset:offset+8], bs)
-	offset += 8
-	bs = math.Float64bits(h.HorizonOcclusionPointY)
-	byteOrder.PutUint64(buf[offset:offset+8], bs)
-	offset += 8
-	bs = math.Float64bits(h.HorizonOcclusionPointZ)
-	byteOrder.PutUint64(buf[offset:], bs)
-	offset += 8
-	if _, err := writer.Write(buf); err != nil {
-		return nil
-	}
-	return nil
-}
-
 type VertexData struct {
 	VertexCount uint32
 	U           []uint16
@@ -166,31 +65,34 @@ type VertexData struct {
 	H           []uint16
 }
 
-func (v *VertexData) Read(reader io.Reader) error {
+func (v *VertexData) Read(reader io.Reader) (int, error) {
+	offset := 0
 	buf := make([]byte, 4)
+	offset += 4
 	if _, err := reader.Read(buf); err != nil {
-		return err
+		return 0, err
 	}
 	v.VertexCount = byteOrder.Uint32(buf)
 
 	buf = make([]byte, v.VertexCount*2)
 	if _, err := reader.Read(buf); err != nil {
-		return err
+		return 0, err
 	}
 	v.U = v.decodeArray(buf, int(v.VertexCount))
 
 	buf = make([]byte, v.VertexCount*2)
 	if _, err := reader.Read(buf); err != nil {
-		return err
+		return 0, err
 	}
 	v.V = v.decodeArray(buf, int(v.VertexCount))
 
 	buf = make([]byte, v.VertexCount*2)
 	if _, err := reader.Read(buf); err != nil {
-		return err
+		return 0, err
 	}
 	v.H = v.decodeArray(buf, int(v.VertexCount))
-	return nil
+	offset += int(2*v.VertexCount + 2*v.VertexCount + 2*v.VertexCount)
+	return offset, nil
 }
 
 func (v *VertexData) Write(writer io.Writer) (int, error) {
@@ -222,7 +124,7 @@ func (v *VertexData) encodeArray(values []uint16, vertexCount int) []byte {
 	value := 0
 	for i := 0; i < vertexCount; i++ {
 		t := values[i]
-		byteOrder.PutUint16(buf[i:i+2], encodeZigZag(int(values[i])-value))
+		byteOrder.PutUint16(buf[i*2:i*2+2], encodeZigZag(int(values[i])-value))
 		value = int(t)
 	}
 	return buf
@@ -236,7 +138,7 @@ func (v *VertexData) decodeArray(buffer []byte, vertexCount int) []uint16 {
 	values := make([]uint16, vertexCount)
 	value := 0
 	for i := 0; i < vertexCount; i++ {
-		value += decodeZigZag(byteOrder.Uint16(buffer[i : i+2]))
+		value += decodeZigZag(byteOrder.Uint16(buffer[i*2 : i*2+2]))
 		values[i] = uint16(value)
 	}
 	return values
@@ -264,7 +166,6 @@ type Indices interface {
 }
 
 type Indices16 struct {
-	Indices
 	IndicesData []uint16
 }
 
@@ -312,14 +213,11 @@ func (ind *Indices16) Read(reader io.Reader) error {
 		return err
 	}
 	triangleCount = byteOrder.Uint32(buf)
-	indicesCount := triangleCount * 3
-	buf = make([]byte, indicesCount*2)
-	if _, err := reader.Read(buf); err != nil {
+
+	ind.IndicesData = make([]uint16, triangleCount*3)
+	err := binary.Read(reader, byteOrder, ind.IndicesData)
+	if err != nil {
 		return err
-	}
-	ind.IndicesData = make([]uint16, indicesCount)
-	for i := range ind.IndicesData {
-		ind.IndicesData[i] = uint16(byteOrder.Uint16(buf[i*2 : (i+1)*2]))
 	}
 	ind.IndicesData = ind.decodeIndices(ind.IndicesData)
 	return nil
@@ -327,22 +225,18 @@ func (ind *Indices16) Read(reader io.Reader) error {
 
 func (ind *Indices16) Write(writer io.Writer) error {
 	data := ind.encodeIndices(ind.IndicesData)
-	buf := make([]byte, ind.CalcSize())
-	offset := 0
-	byteOrder.PutUint32(buf[offset:offset+4], uint32(ind.GetIndexCount()/3))
-	offset += 4
-	for i := range data {
-		byteOrder.PutUint16(buf[offset:offset+2], data[i])
-		offset += 2
+	err := binary.Write(writer, byteOrder, uint32(ind.GetIndexCount()/3))
+	if err != nil {
+		return err
 	}
-	if _, err := writer.Write(buf); err != nil {
-		return nil
+	err = binary.Write(writer, byteOrder, data)
+	if err != nil {
+		return err
 	}
 	return nil
 }
 
 type Indices32 struct {
-	Indices
 	IndicesData []uint32
 }
 
@@ -390,14 +284,10 @@ func (ind *Indices32) Read(reader io.Reader) error {
 		return err
 	}
 	triangleCount = byteOrder.Uint32(buf)
-	indicesCount := triangleCount * 3
-	buf = make([]byte, indicesCount*4)
-	if _, err := reader.Read(buf); err != nil {
+	ind.IndicesData = make([]uint32, triangleCount*3)
+	err := binary.Read(reader, byteOrder, ind.IndicesData)
+	if err != nil {
 		return err
-	}
-	ind.IndicesData = make([]uint32, indicesCount)
-	for i := range ind.IndicesData {
-		ind.IndicesData[i] = uint32(byteOrder.Uint32(buf[i*4 : (i+1)*4]))
 	}
 	ind.IndicesData = ind.decodeIndices(ind.IndicesData)
 	return nil
@@ -405,112 +295,12 @@ func (ind *Indices32) Read(reader io.Reader) error {
 
 func (ind *Indices32) Write(writer io.Writer) error {
 	data := ind.encodeIndices(ind.IndicesData)
-	buf := make([]byte, ind.CalcSize())
-	offset := 0
-	byteOrder.PutUint32(buf[offset:offset+4], uint32(ind.GetIndexCount()/3))
-	offset += 4
-	for i := range data {
-		byteOrder.PutUint32(buf[offset:offset+4], data[i])
-		offset += 4
-	}
-	if _, err := writer.Write(buf); err != nil {
-		return nil
-	}
-	return nil
-}
-
-type EdgeIndices interface {
-	Read(reader io.Reader) error
-	Write(writer io.Writer) error
-}
-
-type EdgeIndices16 struct {
-	EdgeIndices
-	WestIndices  Indices16
-	SouthIndices Indices16
-	EastIndices  Indices16
-	NorthIndices Indices16
-}
-
-func (ind *EdgeIndices16) Read(reader io.Reader) error {
-	if err := ind.WestIndices.Read(reader); err != nil {
+	err := binary.Write(writer, byteOrder, uint32(ind.GetIndexCount()/3))
+	if err != nil {
 		return err
 	}
-
-	if err := ind.SouthIndices.Read(reader); err != nil {
-		return err
-	}
-
-	if err := ind.EastIndices.Read(reader); err != nil {
-		return err
-	}
-
-	if err := ind.NorthIndices.Read(reader); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (ind *EdgeIndices16) Write(writer io.Writer) error {
-	if err := ind.WestIndices.Write(writer); err != nil {
-		return err
-	}
-
-	if err := ind.SouthIndices.Write(writer); err != nil {
-		return err
-	}
-
-	if err := ind.EastIndices.Write(writer); err != nil {
-		return err
-	}
-
-	if err := ind.NorthIndices.Write(writer); err != nil {
-		return err
-	}
-	return nil
-}
-
-type EdgeIndices32 struct {
-	EdgeIndices
-	WestIndices  Indices32
-	SouthIndices Indices32
-	EastIndices  Indices32
-	NorthIndices Indices32
-}
-
-func (ind *EdgeIndices32) Read(reader io.Reader) error {
-	if err := ind.WestIndices.Read(reader); err != nil {
-		return err
-	}
-
-	if err := ind.SouthIndices.Read(reader); err != nil {
-		return err
-	}
-
-	if err := ind.EastIndices.Read(reader); err != nil {
-		return err
-	}
-
-	if err := ind.NorthIndices.Read(reader); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (ind *EdgeIndices32) Write(writer io.Writer) error {
-	if err := ind.WestIndices.Write(writer); err != nil {
-		return err
-	}
-
-	if err := ind.SouthIndices.Write(writer); err != nil {
-		return err
-	}
-
-	if err := ind.EastIndices.Write(writer); err != nil {
-		return err
-	}
-
-	if err := ind.NorthIndices.Write(writer); err != nil {
+	err = binary.Write(writer, byteOrder, data)
+	if err != nil {
 		return err
 	}
 	return nil
@@ -622,11 +412,6 @@ func (t *QuantizedMeshTile) GetMesh() (*MeshData, error) {
 func (t *QuantizedMeshTile) SetMesh(mesh MeshData, rescaled bool) {
 	t.setHeader(mesh.BBox)
 
-	var northlings []uint32
-	var eastlings []uint32
-	var southlings []uint32
-	var westlings []uint32
-
 	var us []uint16
 	var vs []uint16
 	var hs []uint16
@@ -663,18 +448,6 @@ func (t *QuantizedMeshTile) SetMesh(mesh MeshData, rescaled bool) {
 				h = quantizeCoordinate(mesh.Vertices[i][2], mesh.BBox[0][2], mesh.BBox[1][2])
 			}
 
-			if u == 0 {
-				westlings = append(westlings, uint32(i))
-			} else if u == QUANTIZED_COORDINATE_SIZE {
-				eastlings = append(eastlings, uint32(i))
-			}
-
-			if v == 0 {
-				northlings = append(northlings, uint32(i))
-			} else if v == QUANTIZED_COORDINATE_SIZE {
-				southlings = append(southlings, uint32(i))
-			}
-
 			us = append(us, encodeZigZag(u-prevu))
 			vs = append(vs, encodeZigZag(v-prevv))
 			hs = append(hs, encodeZigZag(h-prevh))
@@ -697,13 +470,7 @@ func (t *QuantizedMeshTile) SetMesh(mesh MeshData, rescaled bool) {
 			inds[i*3+1] = uint32(mesh.Faces[i][1])
 			inds[i*3+2] = uint32(mesh.Faces[i][2])
 		}
-		t.Index = Indices32{IndicesData: inds}
-		t.Edge = EdgeIndices32{
-			WestIndices:  Indices32{IndicesData: westlings},
-			SouthIndices: Indices32{IndicesData: southlings},
-			EastIndices:  Indices32{IndicesData: eastlings},
-			NorthIndices: Indices32{IndicesData: northlings},
-		}
+		t.Index = &Indices32{IndicesData: inds}
 	} else {
 		inds := make([]uint16, len(mesh.Faces)*3)
 		for i := range mesh.Faces {
@@ -711,52 +478,40 @@ func (t *QuantizedMeshTile) SetMesh(mesh MeshData, rescaled bool) {
 			inds[i*3+1] = uint16(mesh.Faces[i][1])
 			inds[i*3+2] = uint16(mesh.Faces[i][2])
 		}
-		westlings16 := make([]uint16, len(westlings))
-		for i := range westlings {
-			westlings16[i] = uint16(westlings[i])
-		}
-		southlings16 := make([]uint16, len(southlings))
-		for i := range westlings {
-			southlings16[i] = uint16(southlings[i])
-		}
-		eastlings16 := make([]uint16, len(eastlings))
-		for i := range westlings {
-			eastlings16[i] = uint16(eastlings[i])
-		}
-		northlings16 := make([]uint16, len(northlings))
-		for i := range westlings {
-			northlings16[i] = uint16(northlings[i])
-		}
 
-		t.Index = Indices16{IndicesData: inds}
-		t.Edge = EdgeIndices16{
-			WestIndices:  Indices16{IndicesData: westlings16},
-			SouthIndices: Indices16{IndicesData: southlings16},
-			EastIndices:  Indices16{IndicesData: eastlings16},
-			NorthIndices: Indices16{IndicesData: northlings16},
-		}
+		t.Index = &Indices16{IndicesData: inds}
 	}
 }
 
-func (t *QuantizedMeshTile) Read(reader io.Reader) error {
-	if err := t.Header.Read(reader); err != nil {
+func (t *QuantizedMeshTile) Read(reader io.ReadSeeker) error {
+	var offset int
+	err := binary.Read(reader, byteOrder, &t.Header)
+	if err != nil {
 		return err
 	}
-	if err := t.Data.Read(reader); err != nil {
+	if offset, err = t.Data.Read(reader); err != nil {
 		return err
 	}
+	var alignment int
 	if t.Data.VertexCount > 65535 {
-		t.Index = Indices32{}
-		t.Edge = EdgeIndices32{}
+		alignment = 4
 	} else {
-		t.Index = Indices16{}
-		t.Edge = EdgeIndices16{}
+		alignment = 2
 	}
-	if err := t.Index.(Indices).Read(reader); err != nil {
-		return err
-	}
-	if err := t.Edge.(EdgeIndices).Read(reader); err != nil {
-		return err
+	padding := calcPadding(QUANTIZED_MESH_HEADER_SIZE+offset, alignment)
+	reader.Seek(int64(padding), io.SeekCurrent)
+	if t.Data.VertexCount > 65535 {
+		idx := new(Indices32)
+		if err := idx.Read(reader); err != nil {
+			return err
+		}
+		t.Index = idx
+	} else {
+		idx := new(Indices16)
+		if err := idx.Read(reader); err != nil {
+			return err
+		}
+		t.Index = idx
 	}
 	return nil
 }
@@ -765,7 +520,7 @@ func (t *QuantizedMeshTile) Write(writer io.Writer) error {
 	var err error
 	var offset int
 	var alignment int
-	if err = t.Header.Write(writer); err != nil {
+	if err = binary.Write(writer, byteOrder, t.Header); err != nil {
 		return err
 	}
 	if offset, err = t.Data.Write(writer); err != nil {
@@ -786,11 +541,18 @@ func (t *QuantizedMeshTile) Write(writer io.Writer) error {
 			return nil
 		}
 	}
-	if err = t.Index.(Indices).Write(writer); err != nil {
-		return err
+	switch ti := t.Index.(type) {
+	case Indices16:
+		if err = ti.Write(writer); err != nil {
+			return err
+		}
+	case Indices32:
+		if err = ti.Write(writer); err != nil {
+			return err
+		}
+	default:
+		return errors.New("index is not set")
 	}
-	if err = t.Edge.(EdgeIndices).Write(writer); err != nil {
-		return err
-	}
+
 	return nil
 }
