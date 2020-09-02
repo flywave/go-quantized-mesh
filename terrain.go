@@ -409,7 +409,7 @@ func (t *QuantizedMeshTile) GetMesh() (*MeshData, error) {
 	}
 }
 
-func (t *QuantizedMeshTile) SetMesh(mesh MeshData, rescaled bool) {
+func (t *QuantizedMeshTile) SetMesh(mesh *MeshData, rescaled bool) {
 	t.setHeader(mesh.BBox)
 
 	var us []uint16
