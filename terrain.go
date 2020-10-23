@@ -167,6 +167,10 @@ type Indices interface {
 
 type Indices16 struct {
 	IndicesData []uint16
+	northlings  []uint16
+	eastlings   []uint16
+	southlings  []uint16
+	westlings   []uint16
 }
 
 func (ind *Indices16) GetIndexCount() int {
@@ -223,6 +227,19 @@ func (ind *Indices16) Read(reader io.Reader) error {
 	return nil
 }
 
+func (ind *Indices16) WriteIndices(writer io.Writer, indices []uint16) error {
+	err := binary.Write(writer, byteOrder, uint32(len(indices)))
+	if err != nil {
+		return err
+	}
+
+	err = binary.Write(writer, byteOrder, indices)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (ind *Indices16) Write(writer io.Writer) error {
 	data := ind.encodeIndices(ind.IndicesData)
 	err := binary.Write(writer, byteOrder, uint32(ind.GetIndexCount()/3))
@@ -233,11 +250,32 @@ func (ind *Indices16) Write(writer io.Writer) error {
 	if err != nil {
 		return err
 	}
+
+	err = ind.WriteIndices(writer, ind.westlings)
+	if err != nil {
+		return err
+	}
+	err = ind.WriteIndices(writer, ind.southlings)
+	if err != nil {
+		return err
+	}
+	err = ind.WriteIndices(writer, ind.eastlings)
+	if err != nil {
+		return err
+	}
+	err = ind.WriteIndices(writer, ind.northlings)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
 type Indices32 struct {
 	IndicesData []uint32
+	northlings  []uint32
+	eastlings   []uint32
+	southlings  []uint32
+	westlings   []uint32
 }
 
 func (ind *Indices32) GetIndexCount() int {
@@ -293,6 +331,19 @@ func (ind *Indices32) Read(reader io.Reader) error {
 	return nil
 }
 
+func (ind *Indices32) WriteIndices(writer io.Writer, indices []uint32) error {
+	err := binary.Write(writer, byteOrder, uint32(len(indices)))
+	if err != nil {
+		return err
+	}
+
+	err = binary.Write(writer, byteOrder, indices)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (ind *Indices32) Write(writer io.Writer) error {
 	data := ind.encodeIndices(ind.IndicesData)
 	err := binary.Write(writer, byteOrder, uint32(ind.GetIndexCount()/3))
@@ -300,6 +351,29 @@ func (ind *Indices32) Write(writer io.Writer) error {
 		return err
 	}
 	err = binary.Write(writer, byteOrder, data)
+	if err != nil {
+		return err
+	}
+
+	data = ind.encodeIndices(ind.northlings)
+	err = binary.Write(writer, byteOrder, data)
+	if err != nil {
+		return err
+	}
+
+	err = ind.WriteIndices(writer, ind.westlings)
+	if err != nil {
+		return err
+	}
+	err = ind.WriteIndices(writer, ind.southlings)
+	if err != nil {
+		return err
+	}
+	err = ind.WriteIndices(writer, ind.eastlings)
+	if err != nil {
+		return err
+	}
+	err = ind.WriteIndices(writer, ind.northlings)
 	if err != nil {
 		return err
 	}
@@ -416,6 +490,11 @@ func (t *QuantizedMeshTile) SetMesh(mesh *MeshData, rescaled bool) {
 	var vs []uint16
 	var hs []uint16
 
+	var northlings []uint32
+	var eastlings []uint32
+	var southlings []uint32
+	var westlings []uint32
+
 	u := 0
 	v := 0
 	h := 0
@@ -448,6 +527,18 @@ func (t *QuantizedMeshTile) SetMesh(mesh *MeshData, rescaled bool) {
 				h = quantizeCoordinate(mesh.Vertices[i][2], mesh.BBox[0][2], mesh.BBox[1][2])
 			}
 
+			if u == 0 {
+				westlings = append(westlings, uint32(i))
+			} else if u == QUANTIZED_COORDINATE_SIZE {
+				eastlings = append(eastlings, uint32(i))
+			}
+
+			if v == 0 {
+				northlings = append(northlings, uint32(i))
+			} else if v == QUANTIZED_COORDINATE_SIZE {
+				southlings = append(southlings, uint32(i))
+			}
+
 			us = append(us, encodeZigZag(u-prevu))
 			vs = append(vs, encodeZigZag(v-prevv))
 			hs = append(hs, encodeZigZag(h-prevh))
@@ -470,7 +561,7 @@ func (t *QuantizedMeshTile) SetMesh(mesh *MeshData, rescaled bool) {
 			inds[i*3+1] = uint32(mesh.Faces[i][1])
 			inds[i*3+2] = uint32(mesh.Faces[i][2])
 		}
-		t.Index = &Indices32{IndicesData: inds}
+		t.Index = &Indices32{IndicesData: inds, northlings: northlings, eastlings: eastlings, southlings: southlings, westlings: westlings}
 	} else {
 		inds := make([]uint16, len(mesh.Faces)*3)
 		for i := range mesh.Faces {
@@ -479,7 +570,25 @@ func (t *QuantizedMeshTile) SetMesh(mesh *MeshData, rescaled bool) {
 			inds[i*3+2] = uint16(mesh.Faces[i][2])
 		}
 
-		t.Index = &Indices16{IndicesData: inds}
+		nl := make([]uint16, len(northlings))
+		for i := range northlings {
+			nl[i] = uint16(northlings[i])
+		}
+		el := make([]uint16, len(eastlings))
+		for i := range eastlings {
+			el[i] = uint16(eastlings[i])
+		}
+
+		sl := make([]uint16, len(southlings))
+		for i := range southlings {
+			sl[i] = uint16(southlings[i])
+		}
+		wl := make([]uint16, len(westlings))
+		for i := range westlings {
+			wl[i] = uint16(westlings[i])
+		}
+
+		t.Index = &Indices16{IndicesData: inds, northlings: nl, eastlings: el, southlings: sl, westlings: wl}
 	}
 }
 
@@ -542,11 +651,11 @@ func (t *QuantizedMeshTile) Write(writer io.Writer) error {
 		}
 	}
 	switch ti := t.Index.(type) {
-	case Indices16:
+	case *Indices16:
 		if err = ti.Write(writer); err != nil {
 			return err
 		}
-	case Indices32:
+	case *Indices32:
 		if err = ti.Write(writer); err != nil {
 			return err
 		}
