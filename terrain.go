@@ -502,20 +502,19 @@ func (t *QuantizedMeshTile) SetMesh(mesh *MeshData, rescaled bool) {
 	prevv := 0
 	prevh := 0
 
-	setflgs := make([]bool, len(mesh.Vertices))
-
-	for i := range setflgs {
-		setflgs[i] = false
-	}
+	indices := []int{}
+	setflgs := make(map[int]int)
+	index := 0
 
 	for f := range mesh.Faces {
 		for t := range mesh.Faces[f] {
 			i := mesh.Faces[f][t]
-			if setflgs[i] {
+			if k, ok := setflgs[i]; ok {
+				indices = append(indices, k)
 				continue
 			}
-
-			setflgs[i] = true
+			indices = append(indices, index)
+			setflgs[i] = index
 
 			if rescaled {
 				u = scaleCoordinate(mesh.Vertices[i][0])
@@ -528,15 +527,15 @@ func (t *QuantizedMeshTile) SetMesh(mesh *MeshData, rescaled bool) {
 			}
 
 			if u == 0 {
-				westlings = append(westlings, uint32(i))
+				westlings = append(westlings, uint32(index))
 			} else if u == QUANTIZED_COORDINATE_SIZE {
-				eastlings = append(eastlings, uint32(i))
+				eastlings = append(eastlings, uint32(index))
 			}
 
 			if v == 0 {
-				northlings = append(northlings, uint32(i))
+				northlings = append(northlings, uint32(index))
 			} else if v == QUANTIZED_COORDINATE_SIZE {
-				southlings = append(southlings, uint32(i))
+				southlings = append(southlings, uint32(index))
 			}
 
 			us = append(us, encodeZigZag(u-prevu))
@@ -546,6 +545,7 @@ func (t *QuantizedMeshTile) SetMesh(mesh *MeshData, rescaled bool) {
 			prevu = u
 			prevv = v
 			prevh = h
+			index++
 		}
 	}
 
@@ -556,18 +556,14 @@ func (t *QuantizedMeshTile) SetMesh(mesh *MeshData, rescaled bool) {
 
 	if t.Data.VertexCount > 65535 {
 		inds := make([]uint32, len(mesh.Faces)*3)
-		for i := range mesh.Faces {
-			inds[i*3] = uint32(mesh.Faces[i][0])
-			inds[i*3+1] = uint32(mesh.Faces[i][1])
-			inds[i*3+2] = uint32(mesh.Faces[i][2])
+		for k, v := range indices {
+			inds[k] = uint32(v)
 		}
 		t.Index = &Indices32{IndicesData: inds, northlings: northlings, eastlings: eastlings, southlings: southlings, westlings: westlings}
 	} else {
 		inds := make([]uint16, len(mesh.Faces)*3)
-		for i := range mesh.Faces {
-			inds[i*3] = uint16(mesh.Faces[i][0])
-			inds[i*3+1] = uint16(mesh.Faces[i][1])
-			inds[i*3+2] = uint16(mesh.Faces[i][2])
+		for k, v := range indices {
+			inds[k] = uint16(v)
 		}
 
 		nl := make([]uint16, len(northlings))
