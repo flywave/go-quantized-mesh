@@ -121,11 +121,8 @@ func (v *VertexData) Write(writer io.Writer) (int, error) {
 
 func (v *VertexData) encodeArray(values []uint16, vertexCount int) []byte {
 	buf := make([]byte, vertexCount*2)
-	value := 0
 	for i := 0; i < vertexCount; i++ {
-		t := values[i]
-		byteOrder.PutUint16(buf[i*2:i*2+2], encodeZigZag(int(values[i])-value))
-		value = int(t)
+		byteOrder.PutUint16(buf[i*2:i*2+2], values[i])
 	}
 	return buf
 }
@@ -136,10 +133,8 @@ func encodeZigZag(i int) uint16 {
 
 func (v *VertexData) decodeArray(buffer []byte, vertexCount int) []uint16 {
 	values := make([]uint16, vertexCount)
-	value := 0
 	for i := 0; i < vertexCount; i++ {
-		value += decodeZigZag(byteOrder.Uint16(buffer[i*2 : i*2+2]))
-		values[i] = uint16(value)
+		values[i] = byteOrder.Uint16(buffer[i*2 : i*2+2])
 	}
 	return values
 }
