@@ -425,8 +425,8 @@ func (t *QuantizedMeshTile) getBBoxFromHeader() [2][3]float64 {
 		t.Header.BoundingSphereCenterY + t.Header.BoundingSphereRadius}
 
 	return [2][3]float64{
-		[3]float64{tl[0], tl[1], float64(t.Header.MinimumHeight)},
-		[3]float64{br[0], br[1], float64(t.Header.MaximumHeight)},
+		{tl[0], tl[1], float64(t.Header.MinimumHeight)},
+		{br[0], br[1], float64(t.Header.MaximumHeight)},
 	}
 }
 
