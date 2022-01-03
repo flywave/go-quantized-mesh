@@ -34,5 +34,18 @@ func NewTileJson(name string, minzoom int, maxzoom int, available []int, baseUrl
 		}
 	}
 
-	return &TileJson{Tilejson: "2.1.0", Name: &name, Version: "0.0.1", Format: "quantized-mesh-1.0", Scheme: "tms", Tiles: baseUrls, Minzoom: &minzoom, Maxzoom: &maxzoom, Bounds: []float64{-180, -90, 180, 90}, Projection: "EPSG:4326", Available: available, Extensions: ext}
+	return &TileJson{
+		Tilejson:   "2.1.0",
+		Name:       &name,
+		Version:    "0.0.1",
+		Format:     "quantized-mesh-1.0",
+		Scheme:     "tms",
+		Tiles:      baseUrls,
+		Minzoom:    &minzoom,
+		Maxzoom:    &maxzoom,
+		Bounds:     []float64{-180, -90, 180, 90},
+		Projection: "EPSG:4326",
+		Available:  available,
+		Extensions: ext,
+	}
 }
