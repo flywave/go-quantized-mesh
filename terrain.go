@@ -5,15 +5,49 @@ package terrain
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"io"
 	"math"
+	"strings"
+
+	vec3d "github.com/flywave/go3d/float64/vec3"
 )
 
 const (
-	QUANTIZED_COORDINATE_SIZE  = 32767
-	QUANTIZED_MESH_HEADER_SIZE = 88
+	QUANTIZED_COORDINATE_SIZE             = 32767
+	QUANTIZED_MESH_HEADER_SIZE            = 88
+	QUANTIZED_MESH_LIGHT_EXTENSION_ID     = 1
+	QUANTIZED_MESH_WATERMASK_EXTENSION_ID = 2
+	QUANTIZED_MESH_METADATA_EXTENSION_ID  = 4
+	QUANTIZED_MESH_WATERMASK_TILEPXS      = 65536
 )
+
+type TerrainExtensionFlag uint32
+
+const (
+	Ext_None            TerrainExtensionFlag = 0
+	Ext_Light           TerrainExtensionFlag = 1
+	Ext_WaterMask       TerrainExtensionFlag = 2
+	Ext_Light_WaterMask TerrainExtensionFlag = Ext_Light | Ext_WaterMask
+	Ext_Metadata        TerrainExtensionFlag = 4
+)
+
+const BaseMime = "application/vnd.quantized-mesh;extensions="
+
+func GetTerrainMime(flag TerrainExtensionFlag) string {
+	var ext []string
+	if (flag & Ext_Light) > 0 {
+		ext = append(ext, "octvertexnormals")
+	}
+	if (flag & Ext_WaterMask) > 0 {
+		ext = append(ext, "watermask")
+	}
+	if (flag & Ext_Metadata) > 0 {
+		ext = append(ext, "metadata")
+	}
+	return BaseMime + strings.Join(ext, "-")
+}
 
 var (
 	byteOrder = binary.LittleEndian
@@ -376,10 +410,13 @@ func (ind *Indices32) Write(writer io.Writer) error {
 }
 
 type QuantizedMeshTile struct {
-	Header QuantizedMeshHeader
-	Data   VertexData
-	Index  interface{}
-	Edge   interface{}
+	Header       QuantizedMeshHeader
+	Data         VertexData
+	Index        interface{}
+	Edge         interface{}
+	LightNormals *OctEncodedVertexNormals
+	WaterMasks   interface{}
+	Metadata     *Metadata
 }
 
 type MeshData struct {
@@ -583,7 +620,7 @@ func (t *QuantizedMeshTile) SetMesh(mesh *MeshData, rescaled bool) {
 	}
 }
 
-func (t *QuantizedMeshTile) Read(reader io.ReadSeeker) error {
+func (t *QuantizedMeshTile) Read(reader io.ReadSeeker, flag TerrainExtensionFlag) error {
 	var offset int
 	err := binary.Read(reader, byteOrder, &t.Header)
 	if err != nil {
@@ -613,6 +650,76 @@ func (t *QuantizedMeshTile) Read(reader io.ReadSeeker) error {
 		}
 		t.Index = idx
 	}
+
+	if (flag & Ext_Light) > 0 {
+		lh := ExtensionHeader{}
+
+		err := binary.Read(reader, byteOrder, &lh)
+		if err != nil {
+			return err
+		}
+
+		reader.Seek(int64(2), io.SeekCurrent)
+
+		enN := make([]uint8, lh.ExtensionLength)
+
+		err = binary.Read(reader, byteOrder, &enN)
+		if err != nil {
+			return err
+		}
+
+		t.LightNormals = &OctEncodedVertexNormals{Norm: make([]vec3d.T, int(lh.ExtensionLength/2))}
+		for i := 0; i < int(lh.ExtensionLength/2); i++ {
+			t.LightNormals.Norm[i] = octDecode(enN[i*2], enN[i*2+1])
+		}
+	}
+
+	if (flag & Ext_WaterMask) > 0 {
+		lh := ExtensionHeader{}
+
+		err := binary.Read(reader, byteOrder, &lh)
+		if err != nil {
+			return err
+		}
+
+		if lh.ExtensionLength == 1 {
+			var mask uint8
+
+			err := binary.Read(reader, byteOrder, &mask)
+			if err != nil {
+				return err
+			}
+
+			t.WaterMasks = &WaterMaskLand{Mask: mask}
+		} else if lh.ExtensionLength == QUANTIZED_MESH_WATERMASK_TILEPXS {
+			masks := &WaterMask{}
+			err := binary.Read(reader, byteOrder, &masks.Mask)
+			if err != nil {
+				return err
+			}
+
+			t.WaterMasks = masks
+		}
+	}
+
+	if (flag & Ext_Metadata) > 0 {
+		lh := ExtensionHeader{}
+
+		err := binary.Read(reader, byteOrder, &lh)
+		if err != nil {
+			return err
+		}
+
+		json := make(json.RawMessage, lh.ExtensionLength)
+
+		err = binary.Read(reader, byteOrder, &json)
+		if err != nil {
+			return err
+		}
+
+		t.Metadata = &Metadata{Json: json}
+	}
+
 	return nil
 }
 
@@ -638,7 +745,7 @@ func (t *QuantizedMeshTile) Write(writer io.Writer) error {
 			buf[i] = 0xCA
 		}
 		if _, err := writer.Write(buf); err != nil {
-			return nil
+			return err
 		}
 	}
 	switch ti := t.Index.(type) {
@@ -652,6 +759,75 @@ func (t *QuantizedMeshTile) Write(writer io.Writer) error {
 		}
 	default:
 		return errors.New("index is not set")
+	}
+
+	if t.LightNormals != nil && len(t.LightNormals.Norm) == int(t.Data.VertexCount) {
+		lhead := EXT_LIGHT_HEADER
+		lhead.ExtensionLength = 2 * t.Data.VertexCount
+
+		if err = binary.Write(writer, byteOrder, lhead); err != nil {
+			return err
+		}
+
+		var buf [2]byte
+		buf[0] = 0xCA
+		buf[1] = 0xCA
+
+		if _, err := writer.Write(buf[:]); err != nil {
+			return err
+		}
+
+		for _, n := range t.LightNormals.Norm {
+			en := octEncode(n)
+
+			if _, err := writer.Write(en[:]); err != nil {
+				return err
+			}
+		}
+	}
+
+	if t.WaterMasks != nil {
+		lhead := EXT_WATERMASK_HEADER
+		switch wm := t.WaterMasks.(type) {
+		case *WaterMaskLand:
+			lhead.ExtensionLength = 1
+
+			if err = binary.Write(writer, byteOrder, lhead); err != nil {
+				return err
+			}
+
+			if _, err := writer.Write([]byte{byte(wm.Mask)}); err != nil {
+				return err
+			}
+
+		case *WaterMask:
+			lhead.ExtensionLength = QUANTIZED_MESH_WATERMASK_TILEPXS
+
+			if err = binary.Write(writer, byteOrder, lhead); err != nil {
+				return err
+			}
+
+			if err = binary.Write(writer, byteOrder, wm.Mask); err != nil {
+				return err
+			}
+
+			if _, err := writer.Write(wm.Mask[:]); err != nil {
+				return err
+			}
+		}
+	}
+
+	if t.Metadata != nil {
+		lhead := EXT_METADATA_HEADER
+		lhead.ExtensionLength = uint32(len(t.Metadata.Json))
+
+		if err = binary.Write(writer, byteOrder, lhead); err != nil {
+			return err
+		}
+
+		if _, err := writer.Write(t.Metadata.Json); err != nil {
+			return err
+		}
 	}
 
 	return nil

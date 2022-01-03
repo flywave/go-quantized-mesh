@@ -17,7 +17,7 @@ func TestLoader(t *testing.T) {
 	}
 
 	tm := new(QuantizedMeshTile)
-	err = tm.Read(f)
+	err = tm.Read(f, Ext_None)
 
 	if err != nil {
 		t.Error("error")
@@ -25,5 +25,14 @@ func TestLoader(t *testing.T) {
 
 	if tm.Header.CenterX == 0 {
 		t.Error("error")
+	}
+}
+
+func TestMime(t *testing.T) {
+
+	f := GetTerrainMime(Ext_Light | Ext_WaterMask)
+
+	if f != "" {
+		t.FailNow()
 	}
 }
