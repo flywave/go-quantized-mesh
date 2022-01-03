@@ -30,5 +30,6 @@ type WaterMask struct {
 }
 
 type Metadata struct {
-	Json json.RawMessage
+	JsonLength uint32
+	Json       json.RawMessage
 }
