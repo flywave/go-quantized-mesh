@@ -709,7 +709,7 @@ func (t *QuantizedMeshTile) Read(reader io.ReadSeeker, flag TerrainExtensionFlag
 
 		var jsonLen uint32
 
-		err := binary.Read(reader, byteOrder, &jsonLen)
+		err = binary.Read(reader, byteOrder, &jsonLen)
 		if err != nil {
 			return err
 		}
@@ -828,7 +828,7 @@ func (t *QuantizedMeshTile) Write(writer io.Writer) error {
 			return err
 		}
 
-		jsonLen = uint32(len(t.Metadata.Json))
+		jsonLen := uint32(len(t.Metadata.Json))
 
 		if err = binary.Write(writer, byteOrder, jsonLen); err != nil {
 			return err
