@@ -30,6 +30,8 @@ const (
 	Ext_Metadata        TerrainExtensionFlag = 4
 )
 
+const PRECISION = 1e-7
+
 const BaseMime = "application/vnd.quantized-mesh;extensions="
 
 func GetTerrainMime(flag TerrainExtensionFlag) string {
@@ -51,6 +53,9 @@ var (
 )
 
 func scaleCoordinate(v float64) int {
+	if 1-v < PRECISION {
+		v = 1
+	}
 	return int(v * QUANTIZED_COORDINATE_SIZE)
 }
 
@@ -419,6 +424,7 @@ type QuantizedMeshTile struct {
 type MeshData struct {
 	BBox     [2][3]float64
 	Vertices [][3]float64
+	Normals  [][3]float64
 	Faces    [][3]int
 }
 
