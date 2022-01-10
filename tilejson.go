@@ -8,22 +8,22 @@ type Available struct {
 }
 
 type TileJson struct {
-	Tilejson    string       `json:"tilejson"`
-	Name        *string      `json:"name,omitempty"`
-	Version     string       `json:"version,omitempty"`
-	Format      string       `json:"format,omitempty"`
-	Attribution interface{}  `json:"attribution,omitempty"`
-	Scheme      string       `json:"scheme"`
-	Tiles       string       `json:"tiles"`
-	Minzoom     *int         `json:"minzoom,omitempty"`
-	Maxzoom     *int         `json:"maxzoom,omitempty"`
-	Bounds      []float64    `json:"bounds,omitempty"`
-	Projection  string       `json:"projection"`
-	Available   []*Available `json:"available"`
-	Extensions  []string     `json:"extensions,omitempty"`
+	Tilejson    string         `json:"tilejson"`
+	Name        *string        `json:"name,omitempty"`
+	Version     string         `json:"version,omitempty"`
+	Format      string         `json:"format,omitempty"`
+	Attribution interface{}    `json:"attribution,omitempty"`
+	Scheme      string         `json:"scheme"`
+	Tiles       string         `json:"tiles"`
+	Minzoom     *int           `json:"minzoom,omitempty"`
+	Maxzoom     *int           `json:"maxzoom,omitempty"`
+	Bounds      []float64      `json:"bounds,omitempty"`
+	Projection  string         `json:"projection"`
+	Available   [][]*Available `json:"available"`
+	Extensions  []string       `json:"extensions,omitempty"`
 }
 
-func NewTileJson(name string, minzoom int, maxzoom int, available []*Available, baseUrls string, flag TerrainExtensionFlag) *TileJson {
+func NewTileJson(name string, minzoom int, maxzoom int, available [][]*Available, baseUrls string, flag TerrainExtensionFlag) *TileJson {
 	var ext []string
 	if (flag & Ext_Light) > 0 {
 		ext = append(ext, "octvertexnormals")
