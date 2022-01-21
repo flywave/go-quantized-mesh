@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 	"strings"
+	"unsafe"
 
 	vec3d "github.com/flywave/go3d/float64/vec3"
 )
@@ -30,8 +31,6 @@ const (
 	Ext_Metadata        TerrainExtensionFlag = 4
 )
 
-const PRECISION = 1e-7
-
 const BaseMime = "application/vnd.quantized-mesh;extensions="
 
 func GetTerrainMime(flag TerrainExtensionFlag) string {
@@ -53,9 +52,6 @@ var (
 )
 
 func scaleCoordinate(v float64) int {
-	if 1-v < PRECISION {
-		v = 1
-	}
 	return int(v * QUANTIZED_COORDINATE_SIZE)
 }
 
@@ -386,12 +382,6 @@ func (ind *Indices32) Write(writer io.Writer) error {
 		return err
 	}
 
-	data = ind.encodeIndices(ind.northlings)
-	err = binary.Write(writer, byteOrder, data)
-	if err != nil {
-		return err
-	}
-
 	err = ind.WriteIndices(writer, ind.westlings)
 	if err != nil {
 		return err
@@ -621,6 +611,10 @@ func (t *QuantizedMeshTile) SetMesh(mesh *MeshData, rescaled bool) {
 
 		t.Index = &Indices16{IndicesData: inds, northlings: nl, eastlings: el, southlings: sl, westlings: wl}
 	}
+	if len(mesh.Normals) > 0 {
+		nl := (*[]vec3d.T)(unsafe.Pointer(&mesh.Normals))
+		t.LightNormals = &OctEncodedVertexNormals{Norm: *nl}
+	}
 }
 
 func (t *QuantizedMeshTile) Read(reader io.ReadSeeker, flag TerrainExtensionFlag) error {
@@ -779,14 +773,6 @@ func (t *QuantizedMeshTile) Write(writer io.Writer) error {
 			return err
 		}
 
-		var buf [2]byte
-		buf[0] = 0xCA
-		buf[1] = 0xCA
-
-		if _, err := writer.Write(buf[:]); err != nil {
-			return err
-		}
-
 		for _, n := range t.LightNormals.Norm {
 			en := octEncode(n)
 
@@ -818,10 +804,6 @@ func (t *QuantizedMeshTile) Write(writer io.Writer) error {
 			}
 
 			if err = binary.Write(writer, byteOrder, wm.Mask); err != nil {
-				return err
-			}
-
-			if _, err := writer.Write(wm.Mask[:]); err != nil {
 				return err
 			}
 		}
