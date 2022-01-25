@@ -13,8 +13,8 @@ type TileJson struct {
 	Version     string         `json:"version,omitempty"`
 	Format      string         `json:"format,omitempty"`
 	Attribution interface{}    `json:"attribution,omitempty"`
-	Scheme      string         `json:"scheme"`
-	Tiles       string         `json:"tiles"`
+	Scheme      string         `json:"scheme,omitempty"`
+	Tiles       []string       `json:"tiles"`
 	Minzoom     *int           `json:"minzoom,omitempty"`
 	Maxzoom     *int           `json:"maxzoom,omitempty"`
 	Bounds      []float64      `json:"bounds,omitempty"`
@@ -23,7 +23,7 @@ type TileJson struct {
 	Extensions  []string       `json:"extensions,omitempty"`
 }
 
-func NewTileJson(name string, minzoom int, maxzoom int, available [][]*Available, baseUrls string, flag TerrainExtensionFlag) *TileJson {
+func NewTileJson(name string, minzoom int, maxzoom int, available [][]*Available, baseUrls []string, flag TerrainExtensionFlag) *TileJson {
 	var ext []string
 	if (flag & Ext_Light) > 0 {
 		ext = append(ext, "octvertexnormals")
@@ -41,7 +41,6 @@ func NewTileJson(name string, minzoom int, maxzoom int, available [][]*Available
 		Name:       &name,
 		Version:    "0.0.1",
 		Format:     "quantized-mesh-1.0",
-		Scheme:     "tms",
 		Tiles:      baseUrls,
 		Minzoom:    &minzoom,
 		Maxzoom:    &maxzoom,
