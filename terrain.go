@@ -64,6 +64,9 @@ func quantizeCoordinate(v float64, min float64, max float64) int {
 	if delta < 0 {
 		return 0
 	}
+	if delta == 0 {
+		delta = 1
+	}
 	return scaleCoordinate(float64(v-min) / delta)
 }
 
