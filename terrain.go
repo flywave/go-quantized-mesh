@@ -9,6 +9,7 @@ import (
 	"strings"
 	"unsafe"
 
+	"github.com/flywave/go-proj"
 	vec3d "github.com/flywave/go3d/float64/vec3"
 )
 
@@ -60,10 +61,7 @@ func unscaleCoordinate(v int) float64 {
 }
 
 func quantizeCoordinate(v float64, min float64, max float64) int {
-	delta := max - min
-	if delta < 0 {
-		return 0
-	}
+	delta := math.Abs(max - min)
 	if delta == 0 {
 		delta = 1
 	}
@@ -428,6 +426,38 @@ func distance(max, min []float64) float64 {
 }
 
 func (t *QuantizedMeshTile) setHeader(bbox [2][3]float64) {
+	t.Header.MinimumHeight = float32(bbox[0][2])
+	t.Header.MaximumHeight = float32(bbox[1][2])
+	if bbox[0][0] > 180 {
+		bbox[0][0] = 180
+	}
+	if bbox[0][0] < -180 {
+		bbox[0][0] = 180
+	}
+
+	if bbox[0][1] > 90 {
+		bbox[0][1] = 90
+	}
+	if bbox[0][1] < -90 {
+		bbox[0][1] = -90
+	}
+
+	if bbox[1][0] > 180 {
+		bbox[1][0] = 180
+	}
+	if bbox[1][0] < -180 {
+		bbox[1][0] = 180
+	}
+
+	if bbox[1][1] > 90 {
+		bbox[1][1] = 90
+	}
+	if bbox[1][1] < -90 {
+		bbox[1][1] = -90
+	}
+
+	bbox[0][0], bbox[0][1], bbox[0][2], _ = proj.Lonlat2Ecef(bbox[0][0], bbox[0][1], bbox[0][2])
+	bbox[1][0], bbox[1][1], bbox[1][2], _ = proj.Lonlat2Ecef(bbox[1][0], bbox[1][1], bbox[1][2])
 	var c [3]float64
 	c[0] = (bbox[1][0] + bbox[0][0]) / 2
 	c[1] = (bbox[1][1] + bbox[0][1]) / 2
@@ -436,9 +466,6 @@ func (t *QuantizedMeshTile) setHeader(bbox [2][3]float64) {
 	t.Header.CenterX = c[0]
 	t.Header.CenterY = c[1]
 	t.Header.CenterZ = c[2]
-
-	t.Header.MinimumHeight = float32(bbox[0][2])
-	t.Header.MaximumHeight = float32(bbox[1][2])
 
 	t.Header.BoundingSphereCenterX = c[0]
 	t.Header.BoundingSphereCenterY = c[1]
@@ -658,8 +685,6 @@ func (t *QuantizedMeshTile) Read(reader io.ReadSeeker, flag TerrainExtensionFlag
 		if err != nil {
 			return err
 		}
-
-		reader.Seek(int64(2), io.SeekCurrent)
 
 		enN := make([]uint8, lh.ExtensionLength)
 
