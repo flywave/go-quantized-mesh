@@ -432,7 +432,7 @@ func (t *QuantizedMeshTile) setHeader(bbox [2][3]float64) {
 		bbox[0][0] = 180
 	}
 	if bbox[0][0] < -180 {
-		bbox[0][0] = 180
+		bbox[0][0] = -180
 	}
 
 	if bbox[0][1] > 90 {
@@ -446,7 +446,7 @@ func (t *QuantizedMeshTile) setHeader(bbox [2][3]float64) {
 		bbox[1][0] = 180
 	}
 	if bbox[1][0] < -180 {
-		bbox[1][0] = 180
+		bbox[1][0] = -180
 	}
 
 	if bbox[1][1] > 90 {
