@@ -46,6 +46,7 @@ func NewTileJson(name string, minzoom int, maxzoom int, available [][]*Available
 		Maxzoom:    &maxzoom,
 		Bounds:     []float64{-180, -90, 180, 90},
 		Projection: "EPSG:4326",
+		Scheme:     "tms",
 		Available:  available,
 		Extensions: ext,
 	}
