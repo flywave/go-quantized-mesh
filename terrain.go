@@ -32,6 +32,14 @@ const (
 	Ext_Metadata        TerrainExtensionFlag = 4
 )
 
+const llh_ecef_radiusX = 6378137.0
+const llh_ecef_radiusY = 6378137.0
+const llh_ecef_radiusZ = 6356752.3142451793
+
+const llh_ecef_rX = 1.0 / llh_ecef_radiusX
+const llh_ecef_rY = 1.0 / llh_ecef_radiusY
+const llh_ecef_rZ = 1.0 / llh_ecef_radiusZ
+
 const BaseMime = "application/vnd.quantized-mesh;extensions="
 
 func GetTerrainMime(flag TerrainExtensionFlag) string {
@@ -425,36 +433,10 @@ func distance(max, min []float64) float64 {
 	return math.Sqrt(x*x + y*y)
 }
 
-func (t *QuantizedMeshTile) setHeader(bbox [2][3]float64) {
+func (t *QuantizedMeshTile) setHeader(mesh *MeshData, rescaled bool) {
+	bbox := mesh.BBox
 	t.Header.MinimumHeight = float32(bbox[0][2])
 	t.Header.MaximumHeight = float32(bbox[1][2])
-	if bbox[0][0] > 180 {
-		bbox[0][0] = 180
-	}
-	if bbox[0][0] < -180 {
-		bbox[0][0] = -180
-	}
-
-	if bbox[0][1] > 90 {
-		bbox[0][1] = 90
-	}
-	if bbox[0][1] < -90 {
-		bbox[0][1] = -90
-	}
-
-	if bbox[1][0] > 180 {
-		bbox[1][0] = 180
-	}
-	if bbox[1][0] < -180 {
-		bbox[1][0] = -180
-	}
-
-	if bbox[1][1] > 90 {
-		bbox[1][1] = 90
-	}
-	if bbox[1][1] < -90 {
-		bbox[1][1] = -90
-	}
 
 	bbox[0][0], bbox[0][1], bbox[0][2], _ = proj.Lonlat2Ecef(bbox[0][0], bbox[0][1], bbox[0][2])
 	bbox[1][0], bbox[1][1], bbox[1][2], _ = proj.Lonlat2Ecef(bbox[1][0], bbox[1][1], bbox[1][2])
@@ -470,11 +452,54 @@ func (t *QuantizedMeshTile) setHeader(bbox [2][3]float64) {
 	t.Header.BoundingSphereCenterX = c[0]
 	t.Header.BoundingSphereCenterY = c[1]
 	t.Header.BoundingSphereCenterZ = c[2]
-	t.Header.BoundingSphereRadius = distance(bbox[1][0:2], bbox[0][0:2])
+	t.Header.BoundingSphereRadius = distance(bbox[1][0:2], bbox[0][0:2]) / 2
 
-	t.Header.HorizonOcclusionPointX = c[0]
-	t.Header.HorizonOcclusionPointY = c[1]
-	t.Header.HorizonOcclusionPointZ = bbox[1][2]
+	hc := t.ocp_fromPoints(mesh, rescaled)
+	t.Header.HorizonOcclusionPointX = hc[0]
+	t.Header.HorizonOcclusionPointY = hc[1]
+	t.Header.HorizonOcclusionPointZ = hc[2]
+}
+
+func (t *QuantizedMeshTile) ocp_fromPoints(mesh *MeshData, rescaled bool) [3]float64 {
+	scaledCenter := [3]float64{t.Header.BoundingSphereCenterX * llh_ecef_rX, t.Header.BoundingSphereCenterY * llh_ecef_rY, t.Header.BoundingSphereCenterZ * llh_ecef_rZ}
+	min := mesh.BBox[0]
+	max_magnitude := -math.MaxFloat64
+	for _, v := range mesh.Vertices {
+		if rescaled {
+			v[0] += min[0]
+			v[1] += min[1]
+			v[2] += min[2]
+		}
+		x, y, z, _ := proj.Lonlat2Ecef(v[0], v[1], v[2])
+		scaledPt := [3]float64{x * llh_ecef_rX, y * llh_ecef_rY, z * llh_ecef_rZ}
+		magnitude := ocp_computeMagnitude(scaledPt, scaledCenter)
+		if magnitude > max_magnitude {
+			max_magnitude = magnitude
+		}
+	}
+	sc := vec3d.T(scaledCenter)
+	sc.Scale(max_magnitude)
+	return sc
+}
+
+//
+func ocp_computeMagnitude(position vec3d.T, sphereCenter vec3d.T) float64 {
+	magnitudeSquared := position.LengthSqr()
+	magnitude := math.Sqrt(magnitudeSquared)
+	direction := position.Scale(1 / magnitude)
+
+	// For the purpose of this computation, points below the ellipsoid
+	// are considered to be on it instead.
+	magnitudeSquared = math.Max(1.0, magnitudeSquared)
+	magnitude = math.Max(1.0, magnitude)
+
+	cosAlpha := vec3d.Dot(direction, &sphereCenter)
+	sv := vec3d.Cross(direction, &sphereCenter)
+	sinAlpha := sv.Length()
+	cosBeta := 1.0 / magnitude
+	sinBeta := math.Sqrt(magnitudeSquared-1.0) * cosBeta
+
+	return 1.0 / (cosAlpha*cosBeta - sinAlpha*sinBeta)
 }
 
 func (t *QuantizedMeshTile) getBBoxFromHeader() [2][3]float64 {
@@ -539,7 +564,7 @@ func (t *QuantizedMeshTile) GetMesh() (*MeshData, error) {
 }
 
 func (t *QuantizedMeshTile) SetMesh(mesh *MeshData, rescaled bool) {
-	t.setHeader(mesh.BBox)
+	t.setHeader(mesh, rescaled)
 
 	var us []uint16
 	var vs []uint16
