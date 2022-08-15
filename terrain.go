@@ -260,7 +260,39 @@ func (ind *Indices16) Read(reader io.Reader) error {
 		return err
 	}
 	ind.IndicesData = ind.decodeIndices(ind.IndicesData)
+
+	ind.westlings, err = ind.ReadIndices(reader)
+	if err != nil {
+		return err
+	}
+	ind.southlings, err = ind.ReadIndices(reader)
+	if err != nil {
+		return err
+	}
+	ind.eastlings, err = ind.ReadIndices(reader)
+	if err != nil {
+		return err
+	}
+	ind.northlings, err = ind.ReadIndices(reader)
+	if err != nil {
+		return err
+	}
 	return nil
+}
+
+func (ind *Indices16) ReadIndices(reader io.Reader) ([]uint16, error) {
+	count := uint32(0)
+	err := binary.Read(reader, byteOrder, &count)
+	if err != nil {
+		return nil, err
+	}
+	indices := make([]uint16, count)
+
+	err = binary.Read(reader, byteOrder, indices)
+	if err != nil {
+		return nil, err
+	}
+	return indices, nil
 }
 
 func (ind *Indices16) WriteIndices(writer io.Writer, indices []uint16) error {
@@ -364,7 +396,39 @@ func (ind *Indices32) Read(reader io.Reader) error {
 		return err
 	}
 	ind.IndicesData = ind.decodeIndices(ind.IndicesData)
+
+	ind.westlings, err = ind.ReadIndices(reader)
+	if err != nil {
+		return err
+	}
+	ind.southlings, err = ind.ReadIndices(reader)
+	if err != nil {
+		return err
+	}
+	ind.eastlings, err = ind.ReadIndices(reader)
+	if err != nil {
+		return err
+	}
+	ind.northlings, err = ind.ReadIndices(reader)
+	if err != nil {
+		return err
+	}
 	return nil
+}
+
+func (ind *Indices32) ReadIndices(reader io.Reader) ([]uint32, error) {
+	count := uint32(0)
+	err := binary.Read(reader, byteOrder, &count)
+	if err != nil {
+		return nil, err
+	}
+	indices := make([]uint32, count)
+
+	err = binary.Read(reader, byteOrder, indices)
+	if err != nil {
+		return nil, err
+	}
+	return indices, nil
 }
 
 func (ind *Indices32) WriteIndices(writer io.Writer, indices []uint32) error {
@@ -454,10 +518,10 @@ func (t *QuantizedMeshTile) setHeader(mesh *MeshData, rescaled bool) {
 	t.Header.BoundingSphereCenterZ = c[2]
 	t.Header.BoundingSphereRadius = distance(bbox[1][0:2], bbox[0][0:2]) / 2
 
-	hc := t.ocp_fromPoints(mesh, rescaled)
-	t.Header.HorizonOcclusionPointX = hc[0]
-	t.Header.HorizonOcclusionPointY = hc[1]
-	t.Header.HorizonOcclusionPointZ = hc[2]
+	// hc := t.ocp_fromPoints(mesh, rescaled)
+	t.Header.HorizonOcclusionPointX = c[0]
+	t.Header.HorizonOcclusionPointY = c[1]
+	t.Header.HorizonOcclusionPointZ = c[2]
 }
 
 func (t *QuantizedMeshTile) ocp_fromPoints(mesh *MeshData, rescaled bool) [3]float64 {
