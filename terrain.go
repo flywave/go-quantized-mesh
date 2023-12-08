@@ -19,6 +19,7 @@ const (
 	QUANTIZED_MESH_LIGHT_EXTENSION_ID     = 1
 	QUANTIZED_MESH_WATERMASK_EXTENSION_ID = 2
 	QUANTIZED_MESH_METADATA_EXTENSION_ID  = 4
+	QUANTIZED_MESH_FACEGROUP_EXTENSION_ID = 8
 	QUANTIZED_MESH_WATERMASK_TILEPXS      = 65536
 )
 
@@ -30,6 +31,7 @@ const (
 	Ext_WaterMask       TerrainExtensionFlag = 2
 	Ext_Light_WaterMask TerrainExtensionFlag = Ext_Light | Ext_WaterMask
 	Ext_Metadata        TerrainExtensionFlag = 4
+	Ext_FaceGroup       TerrainExtensionFlag = 8
 )
 
 const llh_ecef_radiusX = 6378137.0
@@ -52,6 +54,9 @@ func GetTerrainMime(flag TerrainExtensionFlag) string {
 	}
 	if (flag & Ext_Metadata) > 0 {
 		ext = append(ext, "metadata")
+	}
+	if (flag & Ext_FaceGroup) > 0 {
+		ext = append(ext, "facegroup")
 	}
 	return BaseMime + strings.Join(ext, "-")
 }
@@ -482,13 +487,15 @@ type QuantizedMeshTile struct {
 	LightNormals *OctEncodedVertexNormals
 	WaterMasks   interface{}
 	Metadata     *Metadata
+	FaceGroop    []*FaceGroop
 }
 
 type MeshData struct {
-	BBox     [2][3]float64
-	Vertices [][3]float64
-	Normals  [][3]float64
-	Faces    [][3]int
+	BBox      [2][3]float64
+	Vertices  [][3]float64
+	Normals   [][3]float64
+	Faces     [][3]int
+	FaceGroop []*FaceGroop
 }
 
 func distance(max, min []float64) float64 {
@@ -546,7 +553,6 @@ func (t *QuantizedMeshTile) ocp_fromPoints(mesh *MeshData, rescaled bool) [3]flo
 	return sc
 }
 
-//
 func ocp_computeMagnitude(position vec3d.T, sphereCenter vec3d.T) float64 {
 	magnitudeSquared := position.LengthSqr()
 	magnitude := math.Sqrt(magnitudeSquared)
@@ -841,6 +847,19 @@ func (t *QuantizedMeshTile) Read(reader io.ReadSeeker, flag TerrainExtensionFlag
 		t.Metadata = &Metadata{Json: json}
 	}
 
+	if (flag & Ext_FaceGroup) > 0 {
+		var count uint32
+		err = binary.Read(reader, byteOrder, &count)
+		if err != nil {
+			return err
+		}
+		fg := make([]*FaceGroop, count)
+		err = binary.Read(reader, byteOrder, &fg)
+		if err != nil {
+			return err
+		}
+		t.FaceGroop = fg
+	}
 	return nil
 }
 
@@ -944,5 +963,22 @@ func (t *QuantizedMeshTile) Write(writer io.Writer) error {
 		}
 	}
 
+	if len(t.FaceGroop) > 0 {
+		lhead := EXT_FACEGROUP_HEADER
+
+		if err = binary.Write(writer, byteOrder, lhead); err != nil {
+			return err
+		}
+
+		lens := uint32(len(t.FaceGroop))
+
+		if err = binary.Write(writer, byteOrder, lens); err != nil {
+			return err
+		}
+
+		if err = binary.Write(writer, byteOrder, t.FaceGroop); err != nil {
+			return err
+		}
+	}
 	return nil
 }

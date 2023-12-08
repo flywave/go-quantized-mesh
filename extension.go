@@ -10,6 +10,7 @@ var (
 	EXT_LIGHT_HEADER     = ExtensionHeader{ExtensionId: QUANTIZED_MESH_LIGHT_EXTENSION_ID}
 	EXT_WATERMASK_HEADER = ExtensionHeader{ExtensionId: QUANTIZED_MESH_WATERMASK_EXTENSION_ID}
 	EXT_METADATA_HEADER  = ExtensionHeader{ExtensionId: QUANTIZED_MESH_METADATA_EXTENSION_ID}
+	EXT_FACEGROUP_HEADER = ExtensionHeader{ExtensionId: QUANTIZED_MESH_FACEGROUP_EXTENSION_ID}
 )
 
 type ExtensionHeader struct {
@@ -32,4 +33,9 @@ type WaterMask struct {
 type Metadata struct {
 	JsonLength uint32
 	Json       json.RawMessage
+}
+
+type FaceGroop struct {
+	Start uint32
+	End   uint32
 }
