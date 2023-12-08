@@ -525,7 +525,7 @@ func (t *QuantizedMeshTile) setHeader(mesh *MeshData, rescaled bool) {
 	t.Header.BoundingSphereCenterZ = c[2]
 	t.Header.BoundingSphereRadius = distance(bbox[1][0:2], bbox[0][0:2]) / 2
 
-	// hc := t.ocp_fromPoints(mesh, rescaled)
+	t.ocp_fromPoints(mesh, rescaled)
 	t.Header.HorizonOcclusionPointX = c[0]
 	t.Header.HorizonOcclusionPointY = c[1]
 	t.Header.HorizonOcclusionPointZ = c[2]
@@ -608,7 +608,7 @@ func (t *QuantizedMeshTile) getVertices(bbox [2][3]float64) [][3]float64 {
 
 func (t *QuantizedMeshTile) getFaces() ([][3]int, error) {
 	if t.Index.(Indices).GetIndexCount()%3 != 0 {
-		return nil, errors.New("mesh face error!")
+		return nil, errors.New("mesh face error")
 	}
 	tri := t.Index.(Indices).GetIndexCount() / 3
 	inds := make([][3]int, tri)
@@ -622,7 +622,7 @@ func (t *QuantizedMeshTile) getFaces() ([][3]int, error) {
 
 func (t *QuantizedMeshTile) GetMesh() (*MeshData, error) {
 	if t.Data.VertexCount < 3 {
-		return nil, errors.New("mesh error!")
+		return nil, errors.New("mesh error")
 	}
 	bbox := t.getBBoxFromHeader()
 	vertices := t.getVertices(bbox)
