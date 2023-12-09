@@ -10,6 +10,7 @@ import (
 	"unsafe"
 
 	"github.com/flywave/go-proj"
+	tin "github.com/flywave/go-tin"
 	vec3d "github.com/flywave/go3d/float64/vec3"
 )
 
@@ -498,6 +499,21 @@ type MeshData struct {
 	FaceGroop []*FaceGroop
 }
 
+func (m *MeshData) AppendMesh(mesh *tin.Mesh) {
+	g := &FaceGroop{Start: uint32(len(m.Faces))}
+	m.BBox[0] = vec3d.Min((*vec3d.T)(&m.BBox[0]), (*vec3d.T)(&mesh.BBox[0]))
+	m.BBox[1] = vec3d.Max((*vec3d.T)(&m.BBox[1]), (*vec3d.T)(&mesh.BBox[1]))
+
+	vts := *(*[][3]float64)(unsafe.Pointer(&mesh.Vertices))
+	m.Vertices = append(m.Vertices, vts...)
+
+	nls := *(*[][3]float64)(unsafe.Pointer(&mesh.Normals))
+	m.Normals = append(m.Vertices, nls...)
+
+	fs := *(*[][3]int)(unsafe.Pointer(&mesh.Faces))
+	m.Faces = append(m.Faces, fs...)
+	m.FaceGroop = append(m.FaceGroop, g)
+}
 func distance(max, min []float64) float64 {
 	x := max[0] - min[0]
 	y := max[1] - min[1]
