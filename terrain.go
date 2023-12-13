@@ -504,16 +504,21 @@ func (m *MeshData) AppendMesh(mesh *tin.Mesh) {
 	m.BBox[0] = vec3d.Min((*vec3d.T)(&m.BBox[0]), (*vec3d.T)(&mesh.BBox[0]))
 	m.BBox[1] = vec3d.Max((*vec3d.T)(&m.BBox[1]), (*vec3d.T)(&mesh.BBox[1]))
 
+	count := len(m.Vertices)
+	for _, f := range mesh.Faces {
+		m.Faces = append(m.Faces, [3]int{count + int(f[0]), count + int(f[1]), count + int(f[2])})
+	}
+
 	vts := *(*[][3]float64)(unsafe.Pointer(&mesh.Vertices))
 	m.Vertices = append(m.Vertices, vts...)
 
 	nls := *(*[][3]float64)(unsafe.Pointer(&mesh.Normals))
-	m.Normals = append(m.Vertices, nls...)
+	m.Normals = append(m.Normals, nls...)
 
-	fs := *(*[][3]int)(unsafe.Pointer(&mesh.Faces))
-	m.Faces = append(m.Faces, fs...)
+	g.End = uint32(len(m.Faces))
 	m.FaceGroop = append(m.FaceGroop, g)
 }
+
 func distance(max, min []float64) float64 {
 	x := max[0] - min[0]
 	y := max[1] - min[1]
