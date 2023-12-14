@@ -511,9 +511,18 @@ func (m *MeshData) AppendMesh(index int, mesh *tin.Mesh) {
 	m.BBox[0] = vec3d.Min((*vec3d.T)(&m.BBox[0]), (*vec3d.T)(&mesh.BBox[0]))
 	m.BBox[1] = vec3d.Max((*vec3d.T)(&m.BBox[1]), (*vec3d.T)(&mesh.BBox[1]))
 
-	m.Vertices = append(m.Vertices, *(*[][3]float64)(unsafe.Pointer(&mesh.Vertices))...)
-	m.Normals = append(m.Normals, *(*[][3]float64)(unsafe.Pointer(&mesh.Normals))...)
-	m.Faces = append(m.Faces, *(*[][3]int)(unsafe.Pointer(&mesh.Faces))...)
+	count := len(m.Vertices)
+	for _, f := range mesh.Faces {
+		m.Faces = append(m.Faces, [3]int{count + int(f[0]), count + int(f[1]), count + int(f[2])})
+	}
+
+	vts := *(*[][3]float64)(unsafe.Pointer(&mesh.Vertices))
+	m.Vertices = append(m.Vertices, vts...)
+
+	nls := *(*[][3]float64)(unsafe.Pointer(&mesh.Normals))
+	m.Normals = append(m.Normals, nls...)
+
+	g.End = uint32(len(m.Faces))
 	m.FaceGroop[index] = g
 }
 
