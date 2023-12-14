@@ -499,6 +499,12 @@ type MeshData struct {
 	FaceGroop []*FaceGroop
 }
 
+func NewMeshData() *MeshData {
+	return &MeshData{
+		BBox: [2][3]float64{vec3d.MinVal, vec3d.MinVal},
+	}
+}
+
 func (m *MeshData) AppendMesh(mesh *tin.Mesh) {
 	g := &FaceGroop{Start: uint32(len(m.Faces))}
 	m.BBox[0] = vec3d.Min((*vec3d.T)(&m.BBox[0]), (*vec3d.T)(&mesh.BBox[0]))
