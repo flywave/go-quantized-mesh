@@ -864,14 +864,14 @@ func (t *QuantizedMeshTile) Read(reader io.ReadSeeker, flag TerrainExtensionFlag
 			return err
 		}
 
-		json := make(json.RawMessage, jsonLen)
+		js := make(json.RawMessage, jsonLen)
 
-		err = binary.Read(reader, byteOrder, &json)
+		err = binary.Read(reader, byteOrder, &js)
 		if err != nil {
 			return err
 		}
 
-		t.Metadata = &Metadata{Json: json}
+		t.Metadata = &Metadata{Json: js}
 	}
 
 	if (flag & Ext_FaceGroup) > 0 {
@@ -880,11 +880,14 @@ func (t *QuantizedMeshTile) Read(reader io.ReadSeeker, flag TerrainExtensionFlag
 		if err != nil {
 			return err
 		}
-		fg := make([]*FaceGroop, count)
-		err = binary.Read(reader, byteOrder, &fg)
+
+		bt := make([]byte, count)
+		err = binary.Read(reader, byteOrder, &bt)
 		if err != nil {
 			return err
 		}
+		fg := []*FaceGroop{}
+		json.Unmarshal(bt, &fg)
 		t.FaceGroop = fg
 	}
 	return nil
@@ -997,13 +1000,13 @@ func (t *QuantizedMeshTile) Write(writer io.Writer) error {
 			return err
 		}
 
-		lens := uint32(len(t.FaceGroop))
+		bt, _ := json.Marshal(t.FaceGroop)
 
-		if err = binary.Write(writer, byteOrder, lens); err != nil {
+		if err = binary.Write(writer, byteOrder, uint32(len(bt))); err != nil {
 			return err
 		}
 
-		if err = binary.Write(writer, byteOrder, t.FaceGroop); err != nil {
+		if _, err = writer.Write(bt); err != nil {
 			return err
 		}
 	}
