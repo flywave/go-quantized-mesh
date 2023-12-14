@@ -488,7 +488,7 @@ type QuantizedMeshTile struct {
 	LightNormals *OctEncodedVertexNormals
 	WaterMasks   interface{}
 	Metadata     *Metadata
-	FaceGroop    []*FaceGroop
+	FaceGroop    map[int]*FaceGroop
 }
 
 type MeshData struct {
@@ -496,33 +496,25 @@ type MeshData struct {
 	Vertices  [][3]float64
 	Normals   [][3]float64
 	Faces     [][3]int
-	FaceGroop []*FaceGroop
+	FaceGroop map[int]*FaceGroop
 }
 
 func NewMeshData() *MeshData {
 	return &MeshData{
-		BBox: [2][3]float64{vec3d.MinVal, vec3d.MinVal},
+		BBox:      [2][3]float64{vec3d.MinVal, vec3d.MinVal},
+		FaceGroop: make(map[int]*FaceGroop),
 	}
 }
 
-func (m *MeshData) AppendMesh(mesh *tin.Mesh) {
+func (m *MeshData) AppendMesh(index int, mesh *tin.Mesh) {
 	g := &FaceGroop{Start: uint32(len(m.Faces))}
 	m.BBox[0] = vec3d.Min((*vec3d.T)(&m.BBox[0]), (*vec3d.T)(&mesh.BBox[0]))
 	m.BBox[1] = vec3d.Max((*vec3d.T)(&m.BBox[1]), (*vec3d.T)(&mesh.BBox[1]))
 
-	count := len(m.Vertices)
-	for _, f := range mesh.Faces {
-		m.Faces = append(m.Faces, [3]int{count + int(f[0]), count + int(f[1]), count + int(f[2])})
-	}
-
-	vts := *(*[][3]float64)(unsafe.Pointer(&mesh.Vertices))
-	m.Vertices = append(m.Vertices, vts...)
-
-	nls := *(*[][3]float64)(unsafe.Pointer(&mesh.Normals))
-	m.Normals = append(m.Normals, nls...)
-
-	g.End = uint32(len(m.Faces))
-	m.FaceGroop = append(m.FaceGroop, g)
+	m.Vertices = append(m.Vertices, *(*[][3]float64)(unsafe.Pointer(&mesh.Vertices))...)
+	m.Normals = append(m.Normals, *(*[][3]float64)(unsafe.Pointer(&mesh.Normals))...)
+	m.Faces = append(m.Faces, *(*[][3]int)(unsafe.Pointer(&mesh.Faces))...)
+	m.FaceGroop[index] = g
 }
 
 func distance(max, min []float64) float64 {
@@ -682,6 +674,7 @@ func (t *QuantizedMeshTile) SetMesh(mesh *MeshData, rescaled bool) {
 	indices := []int{}
 	setflgs := make(map[int]int)
 	index := 0
+	t.FaceGroop = mesh.FaceGroop
 
 	for f := range mesh.Faces {
 		for t := range mesh.Faces[f] {
@@ -886,7 +879,7 @@ func (t *QuantizedMeshTile) Read(reader io.ReadSeeker, flag TerrainExtensionFlag
 		if err != nil {
 			return err
 		}
-		fg := []*FaceGroop{}
+		fg := map[int]*FaceGroop{}
 		json.Unmarshal(bt, &fg)
 		t.FaceGroop = fg
 	}
