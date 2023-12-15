@@ -501,7 +501,7 @@ type MeshData struct {
 
 func NewMeshData() *MeshData {
 	return &MeshData{
-		BBox:      [2][3]float64{vec3d.MinVal, vec3d.MinVal},
+		BBox:      [2][3]float64{vec3d.MaxVal, vec3d.MinVal},
 		FaceGroop: make(map[int]*FaceGroop),
 	}
 }
