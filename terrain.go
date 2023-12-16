@@ -524,18 +524,18 @@ func (m *MeshData) AppendMesh(index int, mesh *tin.Mesh, mesh2 *tin.Mesh) {
 
 	if mesh2 != nil {
 		count := len(m.Vertices)
-		for _, f := range mesh.Faces {
+		for _, f := range mesh2.Faces {
 			m.Faces = append(m.Faces, [3]int{count + int(f[2]), count + int(f[1]), count + int(f[0])})
 		}
 
-		vts := *(*[][3]float64)(unsafe.Pointer(&mesh.Vertices))
+		vts := *(*[][3]float64)(unsafe.Pointer(&mesh2.Vertices))
 		m.Vertices = append(m.Vertices, vts...)
 
-		nls := *(*[][3]float64)(unsafe.Pointer(&mesh.Normals))
+		nls := *(*[][3]float64)(unsafe.Pointer(&mesh2.Normals))
 		m.Normals = append(m.Normals, nls...)
 	}
 
-	g.End = uint32(len(m.Faces))
+	g.End = uint32(len(m.Faces)) - 1
 	m.FaceGroop[index] = g
 }
 
