@@ -36,6 +36,7 @@ type Metadata struct {
 }
 
 type FaceGroop struct {
+	Id    int
 	Start uint32
 	End   uint32
 }
