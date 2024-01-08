@@ -1,12 +1,13 @@
 package terrain
 
 import (
+	"fmt"
 	"os"
 	"testing"
 )
 
 func TestLoader(t *testing.T) {
-	f, err := os.Open("./testdata/2878.terrain")
+	f, err := os.Open("./testdata/11503.terrain")
 	defer f.Close()
 
 	if err != nil {
@@ -32,4 +33,10 @@ func TestMime(t *testing.T) {
 	if f != "" {
 		t.FailNow()
 	}
+}
+
+func TestOtc(t *testing.T) {
+	n := 307
+	n1 := decodeZigZag(uint16(n))
+	fmt.Println(n1)
 }
