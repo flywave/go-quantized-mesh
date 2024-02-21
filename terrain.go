@@ -535,7 +535,7 @@ func (m *MeshData) AppendMesh(index int, mesh *tin.Mesh, mesh2 *tin.Mesh) {
 		m.Normals = append(m.Normals, nls...)
 	}
 
-	g.End = uint32(len(m.Faces)) - 1
+	g.End = (uint32(len(m.Faces)) - 1) * 3
 	m.FaceGroop[index] = g
 }
 
