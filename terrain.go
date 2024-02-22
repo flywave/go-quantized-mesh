@@ -507,7 +507,7 @@ func NewMeshData() *MeshData {
 }
 
 func (m *MeshData) AppendMesh(index int, mesh *tin.Mesh, mesh2 *tin.Mesh) {
-	g := &FaceGroop{Id: index, Start: uint32(len(m.Faces))}
+	g := &FaceGroop{Id: index, Start: uint32(len(m.Faces) * 3)}
 	m.BBox[0] = vec3d.Min((*vec3d.T)(&m.BBox[0]), (*vec3d.T)(&mesh.BBox[0]))
 	m.BBox[1] = vec3d.Max((*vec3d.T)(&m.BBox[1]), (*vec3d.T)(&mesh.BBox[1]))
 
