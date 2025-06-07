@@ -4,6 +4,6 @@ go 1.12
 
 require (
 	github.com/flywave/go-proj v0.0.0-20220711031457-21eef16de10a
-	github.com/flywave/go-tin v0.0.0-20220223031304-eac1b215d1cb
+	github.com/flywave/go-tin v0.0.0-20250607023346-1d48f7852ebc
 	github.com/flywave/go3d v0.0.0-20211208020909-d2697502845a
 )
