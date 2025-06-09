@@ -15,27 +15,24 @@ import (
 )
 
 const (
-	QUANTIZED_COORDINATE_SIZE                = 32767
-	QUANTIZED_MESH_HEADER_SIZE               = 88
-	QUANTIZED_MESH_LIGHT_EXTENSION_ID        = 1
-	QUANTIZED_MESH_WATERMASK_EXTENSION_ID    = 2
-	QUANTIZED_MESH_METADATA_EXTENSION_ID     = 4
-	QUANTIZED_MESH_FACEGROUP_EXTENSION_ID    = 8
-	QUANTIZED_MESH_DISCARDFACES_EXTENSION_ID = 16
-	QUANTIZED_MESH_WATERMASK_TILEPXS         = 65536
+	QUANTIZED_COORDINATE_SIZE             = 32767
+	QUANTIZED_MESH_HEADER_SIZE            = 88
+	QUANTIZED_MESH_LIGHT_EXTENSION_ID     = 1
+	QUANTIZED_MESH_WATERMASK_EXTENSION_ID = 2
+	QUANTIZED_MESH_METADATA_EXTENSION_ID  = 4
+	QUANTIZED_MESH_FACEGROUP_EXTENSION_ID = 8
+	QUANTIZED_MESH_WATERMASK_TILEPXS      = 65536
 )
 
 type TerrainExtensionFlag uint32
 
 const (
-	Ext_None                   TerrainExtensionFlag = 0
-	Ext_Light                  TerrainExtensionFlag = 1
-	Ext_WaterMask              TerrainExtensionFlag = 2
-	Ext_Light_WaterMask        TerrainExtensionFlag = Ext_Light | Ext_WaterMask
-	Ext_Metadata               TerrainExtensionFlag = 4
-	Ext_FaceGroup              TerrainExtensionFlag = 8
-	Ext_DiscardFaces           TerrainExtensionFlag = 16
-	Ext_FaceGroup_DiscardFaces TerrainExtensionFlag = Ext_DiscardFaces | Ext_FaceGroup
+	Ext_None            TerrainExtensionFlag = 0
+	Ext_Light           TerrainExtensionFlag = 1
+	Ext_WaterMask       TerrainExtensionFlag = 2
+	Ext_Light_WaterMask TerrainExtensionFlag = Ext_Light | Ext_WaterMask
+	Ext_Metadata        TerrainExtensionFlag = 4
+	Ext_FaceGroup       TerrainExtensionFlag = 8
 )
 
 const llh_ecef_radiusX = 6378137.0
@@ -492,16 +489,14 @@ type QuantizedMeshTile struct {
 	WaterMasks   interface{}
 	Metadata     *Metadata
 	FaceGroop    map[int]*FaceGroop
-	DiscardFaces Indices
 }
 
 type MeshData struct {
-	BBox         [2][3]float64
-	Vertices     [][3]float64
-	Normals      [][3]float64
-	Faces        [][3]int
-	FaceGroop    map[int]*FaceGroop
-	DiscardFaces [][3]int
+	BBox      [2][3]float64
+	Vertices  [][3]float64
+	Normals   [][3]float64
+	Faces     [][3]int
+	FaceGroop map[int]*FaceGroop
 }
 
 func NewMeshData() *MeshData {
@@ -527,12 +522,6 @@ func (m *MeshData) AppendMesh(index int, mesh *tin.Mesh, mesh2 *tin.Mesh) {
 	nls := *(*[][3]float64)(unsafe.Pointer(&mesh.Normals))
 	m.Normals = append(m.Normals, nls...)
 
-	if len(mesh.DiscardFaces) > 0 {
-		for _, f := range mesh.DiscardFaces {
-			m.DiscardFaces = append(m.DiscardFaces, [3]int{count + int(f[0]), count + int(f[1]), count + int(f[2])})
-		}
-	}
-
 	if mesh2 != nil {
 		count := len(m.Vertices)
 		for _, f := range mesh2.Faces {
@@ -544,12 +533,6 @@ func (m *MeshData) AppendMesh(index int, mesh *tin.Mesh, mesh2 *tin.Mesh) {
 
 		nls := *(*[][3]float64)(unsafe.Pointer(&mesh2.Normals))
 		m.Normals = append(m.Normals, nls...)
-
-		if len(mesh2.DiscardFaces) > 0 {
-			for _, f := range mesh2.DiscardFaces {
-				m.DiscardFaces = append(m.DiscardFaces, [3]int{count + int(f[2]), count + int(f[1]), count + int(f[0])})
-			}
-		}
 	}
 
 	g.End = (uint32(len(m.Faces)) - 1) * 3
@@ -800,16 +783,6 @@ func (t *QuantizedMeshTile) SetMesh(mesh *MeshData, rescaled bool) {
 		nl := (*[]vec3d.T)(unsafe.Pointer(&mesh.Normals))
 		t.LightNormals = &OctEncodedVertexNormals{Norm: *nl}
 	}
-
-	if len(mesh.DiscardFaces) > 0 {
-		inds := make([]uint32, len(mesh.DiscardFaces)*3)
-		for k, v := range mesh.DiscardFaces {
-			inds[k*3] = uint32(v[0])
-			inds[k*3+1] = uint32(v[1])
-			inds[k*3+2] = uint32(v[2])
-		}
-		t.DiscardFaces = &Indices32{IndicesData: inds}
-	}
 }
 
 func (t *QuantizedMeshTile) Read(reader io.ReadSeeker, flag TerrainExtensionFlag) error {
@@ -938,19 +911,6 @@ func (t *QuantizedMeshTile) Read(reader io.ReadSeeker, flag TerrainExtensionFlag
 		t.FaceGroop = fg
 	}
 
-	if (flag & Ext_DiscardFaces) > 0 {
-		lh := ExtensionHeader{}
-		err := binary.Read(reader, byteOrder, &lh)
-		if err != nil {
-			return err
-		}
-
-		idx := new(Indices32)
-		if err := idx.Read(reader); err != nil {
-			return err
-		}
-		t.DiscardFaces = idx
-	}
 	return nil
 }
 
@@ -1067,17 +1027,6 @@ func (t *QuantizedMeshTile) Write(writer io.Writer) error {
 		}
 
 		if _, err = writer.Write(bt); err != nil {
-			return err
-		}
-	}
-
-	if t.DiscardFaces != nil {
-		lhead := EXT_DISCARDFACES_HEADER
-		if err = binary.Write(writer, byteOrder, lhead); err != nil {
-			return err
-		}
-
-		if err = t.DiscardFaces.Write(writer); err != nil {
 			return err
 		}
 	}
