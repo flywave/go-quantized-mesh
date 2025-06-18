@@ -35,11 +35,6 @@ func NewTileJson(name string, minzoom int, maxzoom int, available [][]*Available
 	if (flag & Ext_Metadata) > 0 {
 		ext = append(ext, "metadata")
 	}
-
-	if (flag & Ext_FaceGroup) > 0 {
-		ext = append(ext, "facegroup")
-	}
-
 	return &TileJson{
 		Tilejson:   "2.1.0",
 		Name:       &name,

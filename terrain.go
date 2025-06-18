@@ -20,7 +20,6 @@ const (
 	QUANTIZED_MESH_LIGHT_EXTENSION_ID     = 1
 	QUANTIZED_MESH_WATERMASK_EXTENSION_ID = 2
 	QUANTIZED_MESH_METADATA_EXTENSION_ID  = 4
-	QUANTIZED_MESH_FACEGROUP_EXTENSION_ID = 8
 	QUANTIZED_MESH_WATERMASK_TILEPXS      = 65536
 )
 
@@ -32,7 +31,6 @@ const (
 	Ext_WaterMask       TerrainExtensionFlag = 2
 	Ext_Light_WaterMask TerrainExtensionFlag = Ext_Light | Ext_WaterMask
 	Ext_Metadata        TerrainExtensionFlag = 4
-	Ext_FaceGroup       TerrainExtensionFlag = 8
 )
 
 const llh_ecef_radiusX = 6378137.0
@@ -55,9 +53,6 @@ func GetTerrainMime(flag TerrainExtensionFlag) string {
 	}
 	if (flag & Ext_Metadata) > 0 {
 		ext = append(ext, "metadata")
-	}
-	if (flag & Ext_FaceGroup) > 0 {
-		ext = append(ext, "facegroup")
 	}
 	return BaseMime + strings.Join(ext, "-")
 }
@@ -492,22 +487,19 @@ type QuantizedMeshTile struct {
 }
 
 type MeshData struct {
-	BBox      [2][3]float64
-	Vertices  [][3]float64
-	Normals   [][3]float64
-	Faces     [][3]int
-	FaceGroop map[int]*FaceGroop
+	BBox     [2][3]float64
+	Vertices [][3]float64
+	Normals  [][3]float64
+	Faces    [][3]int
 }
 
 func NewMeshData() *MeshData {
 	return &MeshData{
-		BBox:      [2][3]float64{vec3d.MaxVal, vec3d.MinVal},
-		FaceGroop: make(map[int]*FaceGroop),
+		BBox: [2][3]float64{vec3d.MaxVal, vec3d.MinVal},
 	}
 }
 
 func (m *MeshData) AppendMesh(index int, mesh *tin.Mesh, mesh2 *tin.Mesh) {
-	g := &FaceGroop{Id: index, Start: uint32(len(m.Faces) * 3)}
 	m.BBox[0] = vec3d.Min((*vec3d.T)(&m.BBox[0]), (*vec3d.T)(&mesh.BBox[0]))
 	m.BBox[1] = vec3d.Max((*vec3d.T)(&m.BBox[1]), (*vec3d.T)(&mesh.BBox[1]))
 
@@ -534,10 +526,6 @@ func (m *MeshData) AppendMesh(index int, mesh *tin.Mesh, mesh2 *tin.Mesh) {
 		nls := *(*[][3]float64)(unsafe.Pointer(&mesh2.Normals))
 		m.Normals = append(m.Normals, nls...)
 	}
-
-	g.End = (uint32(len(m.Faces)) - 1) * 3
-	m.FaceGroop[index] = g
-
 }
 
 func distance(max, min []float64) float64 {
@@ -697,7 +685,6 @@ func (t *QuantizedMeshTile) SetMesh(mesh *MeshData, rescaled bool) {
 	indices := []int{}
 	setflgs := make(map[int]int)
 	index := 0
-	t.FaceGroop = mesh.FaceGroop
 
 	for f := range mesh.Faces {
 		for t := range mesh.Faces[f] {
@@ -887,30 +874,6 @@ func (t *QuantizedMeshTile) Read(reader io.ReadSeeker, flag TerrainExtensionFlag
 
 		t.Metadata = &Metadata{Json: js}
 	}
-
-	if (flag & Ext_FaceGroup) > 0 {
-		lh := ExtensionHeader{}
-		err := binary.Read(reader, byteOrder, &lh)
-		if err != nil {
-			return err
-		}
-
-		var count uint32
-		err = binary.Read(reader, byteOrder, &count)
-		if err != nil {
-			return err
-		}
-
-		bt := make([]byte, count)
-		err = binary.Read(reader, byteOrder, &bt)
-		if err != nil {
-			return err
-		}
-		fg := map[int]*FaceGroop{}
-		json.Unmarshal(bt, &fg)
-		t.FaceGroop = fg
-	}
-
 	return nil
 }
 
@@ -1010,23 +973,6 @@ func (t *QuantizedMeshTile) Write(writer io.Writer) error {
 		}
 
 		if _, err := writer.Write(t.Metadata.Json); err != nil {
-			return err
-		}
-	}
-
-	if len(t.FaceGroop) > 0 {
-		lhead := EXT_FACEGROUP_HEADER
-		if err = binary.Write(writer, byteOrder, lhead); err != nil {
-			return err
-		}
-
-		bt, _ := json.Marshal(t.FaceGroop)
-
-		if err = binary.Write(writer, byteOrder, uint32(len(bt))); err != nil {
-			return err
-		}
-
-		if _, err = writer.Write(bt); err != nil {
 			return err
 		}
 	}

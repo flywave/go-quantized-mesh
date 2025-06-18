@@ -7,15 +7,15 @@ import (
 )
 
 func TestLoader(t *testing.T) {
-	f, err := os.Open("./testdata/11503.terrain")
-	defer f.Close()
+	f, err := os.Open("./testdata/5173.terrain")
 
 	if err != nil {
 		t.Error("error")
 	}
+	defer f.Close()
 
 	tm := new(QuantizedMeshTile)
-	err = tm.Read(f, Ext_Light_WaterMask)
+	err = tm.Read(f, Ext_None)
 
 	if err != nil {
 		t.Error("error")
