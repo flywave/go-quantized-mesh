@@ -33,9 +33,3 @@ type Metadata struct {
 	JsonLength uint32
 	Json       json.RawMessage
 }
-
-type FaceGroop struct {
-	Id    int
-	Start uint32
-	End   uint32
-}

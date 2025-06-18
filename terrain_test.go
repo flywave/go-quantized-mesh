@@ -30,7 +30,7 @@ func TestMime(t *testing.T) {
 
 	f := GetTerrainMime(Ext_Light | Ext_WaterMask)
 
-	if f != "" {
+	if f == "" {
 		t.FailNow()
 	}
 }
