@@ -650,7 +650,61 @@ func (t *QuantizedMeshTile) GetMesh() (*MeshData, error) {
 }
 
 func (t *QuantizedMeshTile) SetMesh(mesh *MeshData, rescaled bool) {
+	// 新增：预计算旋转矩阵
+	type rotationMatrix [3][3]float64
+	rotations := make([]rotationMatrix, len(mesh.Vertices))
+
+	if true {
+		for i, v := range mesh.Vertices {
+			// 计算从模型坐标系到ECEF的旋转矩阵
+			lon, lat := v[0], v[1]
+			lambda := lon * math.Pi / 180
+			phi := lat * math.Pi / 180
+
+			east := vec3d.T{-math.Sin(lambda), math.Cos(lambda), 0}
+			north := vec3d.T{
+				-math.Sin(phi) * math.Cos(lambda),
+				-math.Sin(phi) * math.Sin(lambda),
+				math.Cos(phi),
+			}
+			up := vec3d.T{
+				math.Cos(phi) * math.Cos(lambda),
+				math.Cos(phi) * math.Sin(lambda),
+				math.Sin(phi),
+			}
+
+			rotations[i] = rotationMatrix{
+				{east[0], north[0], up[0]},
+				{east[1], north[1], up[1]},
+				{east[2], north[2], up[2]},
+			}
+		}
+	}
 	t.setHeader(mesh, rescaled)
+
+	// 转换法向量坐标系
+	if len(mesh.Normals) > 0 {
+		transformedNormals := make([][3]float64, len(mesh.Normals))
+		for i := range mesh.Normals {
+			orig := mesh.Normals[i]
+			rot := rotations[i]
+
+			// 应用旋转矩阵
+			x := rot[0][0]*orig[0] + rot[0][1]*orig[1] + rot[0][2]*orig[2]
+			y := rot[1][0]*orig[0] + rot[1][1]*orig[1] + rot[1][2]*orig[2]
+			z := rot[2][0]*orig[0] + rot[2][1]*orig[1] + rot[2][2]*orig[2]
+
+			// 归一化处理
+			length := math.Sqrt(x*x + y*y + z*z)
+			if length > 0 {
+				x /= length
+				y /= length
+				z /= length
+			}
+			transformedNormals[i] = [3]float64{x, y, z}
+		}
+		mesh.Normals = transformedNormals
+	}
 
 	var us []uint16
 	var vs []uint16
@@ -692,15 +746,17 @@ func (t *QuantizedMeshTile) SetMesh(mesh *MeshData, rescaled bool) {
 				h = quantizeCoordinate(mesh.Vertices[i][2], mesh.BBox[0][2], mesh.BBox[1][2])
 			}
 
-			if u == 0 {
+			switch u {
+			case 0:
 				westlings = append(westlings, uint32(index))
-			} else if u == QUANTIZED_COORDINATE_SIZE {
+			case QUANTIZED_COORDINATE_SIZE:
 				eastlings = append(eastlings, uint32(index))
 			}
 
-			if v == 0 {
+			switch v {
+			case 0:
 				northlings = append(northlings, uint32(index))
-			} else if v == QUANTIZED_COORDINATE_SIZE {
+			case QUANTIZED_COORDINATE_SIZE:
 				southlings = append(southlings, uint32(index))
 			}
 
@@ -817,7 +873,8 @@ func (t *QuantizedMeshTile) Read(reader io.ReadSeeker, flag TerrainExtensionFlag
 			return err
 		}
 
-		if lh.ExtensionLength == 1 {
+		switch lh.ExtensionLength {
+		case 1:
 			var mask uint8
 
 			err := binary.Read(reader, byteOrder, &mask)
@@ -826,7 +883,7 @@ func (t *QuantizedMeshTile) Read(reader io.ReadSeeker, flag TerrainExtensionFlag
 			}
 
 			t.WaterMasks = &WaterMaskLand{Mask: mask}
-		} else if lh.ExtensionLength == QUANTIZED_MESH_WATERMASK_TILEPXS {
+		case QUANTIZED_MESH_WATERMASK_TILEPXS:
 			masks := &WaterMask{}
 			err := binary.Read(reader, byteOrder, &masks.Mask)
 			if err != nil {
