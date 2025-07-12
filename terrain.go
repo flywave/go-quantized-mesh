@@ -67,15 +67,6 @@ var (
 	byteOrder = binary.LittleEndian
 )
 
-func scaleCoordinate(v float64, quantization int) int {
-	switch quantization {
-	case BITS12:
-		return int(v * QUANTIZED_BIT12_COORDINATE_SIZE)
-	default: // BITS16
-		return int(v * QUANTIZED_COORDINATE_SIZE)
-	}
-}
-
 func unscaleCoordinate(v int, quantization int) float64 {
 	switch quantization {
 	case BITS12:
@@ -128,165 +119,93 @@ type QuantizedMeshHeader struct {
 	HorizonOcclusionPointZ float64
 }
 
+// 修改 VertexData 结构
 type VertexData struct {
 	VertexCount uint32
-	U           []uint16
-	V           []uint16
-	H           []uint16
+	Data        []uint16 // 统一存储顶点数据
 }
 
-// 修改VertexData的Read方法
-func (v *VertexData) Read(reader io.Reader, quantization int) (int, error) {
-	offset := 0
-	buf := make([]byte, 4)
-	offset += 4
-	if _, err := reader.Read(buf); err != nil {
+// 重写 Read 方法
+func (vd *VertexData) Read(reader io.Reader, quantization int, minHeight, maxHeight float32) (int, error) {
+	// 读取顶点数量
+	if err := binary.Read(reader, binary.LittleEndian, &vd.VertexCount); err != nil {
 		return 0, err
 	}
-	v.VertexCount = byteOrder.Uint32(buf)
-	vertexCount := int(v.VertexCount)
+	vertexCount := int(vd.VertexCount)
 
-	// 新增量化类型判断
-	readCoord := func() ([]uint16, error) {
-		if quantization == BITS12 {
-			// 12位压缩格式：每顶点3个分量，每个分量12位
-			bufSize := (vertexCount*3 + 1) / 2
-			buf := make([]byte, bufSize)
-			if _, err := io.ReadFull(reader, buf); err != nil {
-				return nil, err
-			}
-			return v.decodeArray12bit(buf, vertexCount*3), nil
-		}
-		// 非压缩格式：每个分量16位
-		buf := make([]byte, vertexCount*2)
-		if _, err := io.ReadFull(reader, buf); err != nil {
-			return nil, err
-		}
-		return v.decodeArray(buf, vertexCount), nil
-	}
-
-	// 读取坐标数据
-	var err error
-	if v.U, err = readCoord(); err != nil {
-		return 0, err
-	}
-	if v.V, err = readCoord(); err != nil {
-		return 0, err
-	}
-	if v.H, err = readCoord(); err != nil {
-		return 0, err
-	}
-
-	// 计算数据大小
+	// 根据量化类型确定数据大小
+	elements := 3 // BITS16 模式
 	if quantization == BITS12 {
-		offset += (vertexCount*3 + 1) / 2 * 3 // 3个分量
-	} else {
-		offset += vertexCount * 2 * 3 // 每个分量2字节
+		elements = 3 // TS 兼容布局: [xy, zh, uv]
 	}
 
-	return offset, nil
-}
-
-// 新增12位解码方法
-func (v *VertexData) decodeArray12bit(buffer []byte, count int) []uint16 {
-	values := make([]uint16, count)
-	for i := 0; i < count; i += 2 {
-		idx := i * 3 / 2
-		if i+1 < count {
-			// 解包两个12位值到三个字节
-			values[i] = uint16(buffer[idx])<<4 | uint16(buffer[idx+1])>>4
-			values[i+1] = uint16(buffer[idx+1]&0x0F)<<8 | uint16(buffer[idx+2])
-		} else {
-			// 处理最后一个单独的值
-			values[i] = uint16(buffer[idx]) << 4
-		}
-	}
-	return values
-}
-
-// 修改Write方法
-func (v *VertexData) Write(writer io.Writer, quantization int) (int, error) {
-	offset := 0
-	buf := make([]byte, 4)
-	byteOrder.PutUint32(buf, v.VertexCount)
-	offset += 4
-	if _, err := writer.Write(buf); err != nil {
+	// 读取顶点数据
+	dataSize := vertexCount * elements
+	vd.Data = make([]uint16, dataSize)
+	if err := binary.Read(reader, binary.LittleEndian, vd.Data); err != nil {
 		return 0, err
 	}
 
-	vertexCount := int(v.VertexCount)
-
-	// 新增压缩写入逻辑
-	writeCoord := func(values []uint16) error {
-		var data []byte
-		if quantization == BITS12 {
-			data = v.encodeArray12bit(values)
-		} else {
-			data = v.encodeArray(values, vertexCount)
-		}
-		_, err := writer.Write(data)
-		return err
-	}
-
-	if err := writeCoord(v.U); err != nil {
-		return 0, err
-	}
-	if err := writeCoord(v.V); err != nil {
-		return 0, err
-	}
-	if err := writeCoord(v.H); err != nil {
-		return 0, err
-	}
-
-	// 计算写入字节数
-	if quantization == BITS12 {
-		offset += (vertexCount*3 + 1) / 2 * 3
-	} else {
-		offset += vertexCount * 2 * 3
-	}
-
-	return offset, nil
-}
-
-// 新增12位编码方法
-func (v *VertexData) encodeArray12bit(values []uint16) []byte {
-	buf := make([]byte, (len(values)*3+1)/2)
-	for i := 0; i < len(values); i += 2 {
-		idx := i * 3 / 2
-		if i+1 < len(values) {
-			// 打包两个12位值到三个字节
-			buf[idx] = byte(values[i] >> 4)
-			buf[idx+1] = byte((values[i]&0x0F)<<4 | values[i+1]>>8)
-			buf[idx+2] = byte(values[i+1])
-		} else {
-			// 处理最后一个单独的值
-			buf[idx] = byte(values[i] >> 4)
-			buf[idx+1] = byte((values[i] & 0x0F) << 4)
-		}
-	}
-	return buf
-}
-
-func (v *VertexData) encodeArray(values []uint16, vertexCount int) []byte {
-	buf := make([]byte, vertexCount*2)
+	// 执行差分解码
+	u, v, h := 0, 0, 0
 	for i := 0; i < vertexCount; i++ {
-		val := values[i]
-		byteOrder.PutUint16(buf[i*2:i*2+2], val)
+		idx := i * elements
+
+		// 解码并累加
+		u += decodeZigZag(vd.Data[idx])
+		vd.Data[idx] = uint16(u)
+
+		v += decodeZigZag(vd.Data[idx+1])
+		vd.Data[idx+1] = uint16(v)
+
+		h += decodeZigZag(vd.Data[idx+2])
+		vd.Data[idx+2] = uint16(h)
 	}
-	return buf
+
+	return 4 + dataSize*2, nil
+}
+
+// 重写 Write 方法
+func (v *VertexData) Write(writer io.Writer, quantization int, minHeight, maxHeight float32) (int, error) {
+	// 克隆数据以避免修改原始
+	data := make([]uint16, len(v.Data))
+	copy(data, v.Data)
+
+	// 执行差分编码
+	prevU, prevV, prevH := 0, 0, 0
+	elements := 3
+	for i := 0; i < int(v.VertexCount); i++ {
+		idx := i * elements
+
+		// 计算差分值
+		u := int(data[idx]) - prevU
+		v := int(data[idx+1]) - prevV
+		h := int(data[idx+2]) - prevH
+
+		// 存储差分值
+		data[idx] = encodeZigZag(u)
+		data[idx+1] = encodeZigZag(v)
+		data[idx+2] = encodeZigZag(h)
+
+		// 更新前值
+		prevU = int(data[idx])
+		prevV = int(data[idx+1])
+		prevH = int(data[idx+2])
+	}
+
+	// 写入数据
+	if err := binary.Write(writer, binary.LittleEndian, v.VertexCount); err != nil {
+		return 0, err
+	}
+	if err := binary.Write(writer, binary.LittleEndian, data); err != nil {
+		return 0, err
+	}
+
+	return 4 + len(data)*2, nil
 }
 
 func encodeZigZag(i int) uint16 {
 	return uint16((i >> 15) ^ (i << 1))
-}
-
-func (v *VertexData) decodeArray(buffer []byte, vertexCount int) []uint16 {
-	values := make([]uint16, vertexCount)
-	for i := 0; i < vertexCount; i++ {
-		val := byteOrder.Uint16(buffer[i*2 : i*2+2])
-		values[i] = val
-	}
-	return values
 }
 
 func decodeZigZag(encoded uint16) int {
@@ -712,21 +631,22 @@ func (t *QuantizedMeshTile) getBBoxFromHeader() [2][3]float64 {
 
 func (t *QuantizedMeshTile) getVertices(bbox [2][3]float64) [][3]float64 {
 	vecs := make([][3]float64, t.Data.VertexCount)
-	u := 0
-	v := 0
-	height := 0
-	for i := range vecs {
-		u += decodeZigZag(t.Data.U[i])
-		v += decodeZigZag(t.Data.V[i])
-		height += decodeZigZag(t.Data.H[i])
+	elements := 3
 
+	for i := range vecs {
+		idx := i * elements
+
+		// 从数据缓冲区获取值
+		u := int(t.Data.Data[idx])
+		v := int(t.Data.Data[idx+1])
+		h := int(t.Data.Data[idx+2])
+
+		// 反量化坐标
 		x := dequantizeCoordinate(u, bbox[0][0], bbox[1][0], t.quantization)
 		y := dequantizeCoordinate(v, bbox[0][1], bbox[1][1], t.quantization)
-		z := dequantizeCoordinate(height, bbox[0][2], bbox[1][2], t.quantization)
+		z := dequantizeCoordinate(h, bbox[0][2], bbox[1][2], t.quantization)
 
-		vecs[i][0] = x
-		vecs[i][1] = y
-		vecs[i][2] = z
+		vecs[i] = [3]float64{x, y, z}
 	}
 	return vecs
 }
@@ -759,6 +679,7 @@ func (t *QuantizedMeshTile) GetMesh() (*MeshData, error) {
 }
 
 func (t *QuantizedMeshTile) SetMesh(mesh *MeshData, rescaled bool) {
+	// 判断量化类型
 	dimensions := vec3d.Sub((*vec3d.T)(&mesh.BBox[1]), (*vec3d.T)(&mesh.BBox[0]))
 	maxDim := math.Max(math.Max(dimensions[0], dimensions[1]), dimensions[2])
 
@@ -768,110 +689,73 @@ func (t *QuantizedMeshTile) SetMesh(mesh *MeshData, rescaled bool) {
 		t.quantization = BITS16
 	}
 
-	type rotationMatrix [3][3]float64
-	rotations := make([]rotationMatrix, len(mesh.Vertices))
-
-	if true {
-		for i, v := range mesh.Vertices {
-			// 计算从模型坐标系到ECEF的旋转矩阵
-			lon, lat := v[0], v[1]
-			lambda := lon * math.Pi / 180
-			phi := lat * math.Pi / 180
-
-			east := vec3d.T{-math.Sin(lambda), math.Cos(lambda), 0}
-			north := vec3d.T{
-				-math.Sin(phi) * math.Cos(lambda),
-				-math.Sin(phi) * math.Sin(lambda),
-				math.Cos(phi),
-			}
-			up := vec3d.T{
-				math.Cos(phi) * math.Cos(lambda),
-				math.Cos(phi) * math.Sin(lambda),
-				math.Sin(phi),
-			}
-
-			rotations[i] = rotationMatrix{
-				{east[0], north[0], up[0]},
-				{east[1], north[1], up[1]},
-				{east[2], north[2], up[2]},
-			}
-		}
-	}
+	// 设置头部信息
 	t.setHeader(mesh, rescaled)
 
-	// 转换法向量坐标系
-	if len(mesh.Normals) > 0 {
-		transformedNormals := make([][3]float64, len(mesh.Normals))
-		for i := range mesh.Normals {
-			orig := mesh.Normals[i]
-			rot := rotations[i]
+	// 创建顶点数据缓冲区 (每个顶点3个uint16: u, v, height)
+	elements := 3
+	vertexCount := len(mesh.Vertices)
+	data := make([]uint16, vertexCount*elements)
 
-			// 应用旋转矩阵
-			x := rot[0][0]*orig[0] + rot[0][1]*orig[1] + rot[0][2]*orig[2]
-			y := rot[1][0]*orig[0] + rot[1][1]*orig[1] + rot[1][2]*orig[2]
-			z := rot[2][0]*orig[0] + rot[2][1]*orig[1] + rot[2][2]*orig[2]
+	// 处理每个顶点
+	for i, vert := range mesh.Vertices {
+		idx := i * elements
 
-			// 归一化处理
-			length := math.Sqrt(x*x + y*y + z*z)
-			if length > 0 {
-				x /= length
-				y /= length
-				z /= length
-			}
-			transformedNormals[i] = [3]float64{x, y, z}
-		}
-		mesh.Normals = transformedNormals
+		// 量化坐标
+		u := quantizeCoordinate(vert[0], mesh.BBox[0][0], mesh.BBox[1][0], t.quantization)
+		v := quantizeCoordinate(vert[1], mesh.BBox[0][1], mesh.BBox[1][1], t.quantization)
+		h := quantizeCoordinate(vert[2], mesh.BBox[0][2], mesh.BBox[1][2], t.quantization)
+
+		// 存储原始量化值 (稍后执行差分编码)
+		data[idx] = uint16(u)
+		data[idx+1] = uint16(v)
+		data[idx+2] = uint16(h)
 	}
 
-	var us []uint16
-	var vs []uint16
-	var hs []uint16
+	// 设置顶点数据
+	t.Data = VertexData{
+		VertexCount: uint32(vertexCount),
+		Data:        data,
+	}
 
+	// 处理索引和边界顶点
+	var indices []int
+	setflgs := make(map[int]int)
+	index := 0
+
+	// 边界顶点集合
 	var northlings []uint32
 	var eastlings []uint32
 	var southlings []uint32
 	var westlings []uint32
 
-	u := 0
-	v := 0
-	h := 0
-	prevu := 0
-	prevv := 0
-	prevh := 0
+	maxCoord := QUANTIZED_COORDINATE_SIZE
+	if t.quantization == BITS12 {
+		maxCoord = QUANTIZED_BIT12_COORDINATE_SIZE
+	}
 
-	indices := []int{}
-	setflgs := make(map[int]int)
-	index := 0
-
+	// 处理每个面
 	for f := range mesh.Faces {
 		for tf := range mesh.Faces[f] {
 			i := mesh.Faces[f][tf]
+
+			// 如果顶点已处理过，重用索引
 			if k, ok := setflgs[i]; ok {
 				indices = append(indices, k)
 				continue
 			}
+
 			indices = append(indices, index)
 			setflgs[i] = index
 
-			if rescaled {
-				u = scaleCoordinate(mesh.Vertices[i][0], t.quantization)
-				v = scaleCoordinate(mesh.Vertices[i][1], t.quantization)
-				h = scaleCoordinate(mesh.Vertices[i][2], t.quantization)
-			} else {
-				u = quantizeCoordinate(mesh.Vertices[i][0], mesh.BBox[0][0], mesh.BBox[1][0], t.quantization)
-				v = quantizeCoordinate(mesh.Vertices[i][1], mesh.BBox[0][1], mesh.BBox[1][1], t.quantization)
-				h = quantizeCoordinate(mesh.Vertices[i][2], mesh.BBox[0][2], mesh.BBox[1][2], t.quantization)
-			}
-
-			maxCoord := QUANTIZED_COORDINATE_SIZE
-			if t.quantization == BITS12 {
-				maxCoord = QUANTIZED_BIT12_COORDINATE_SIZE
-			}
+			// 检查边界顶点
+			u := int(data[i*elements])
+			v := int(data[i*elements+1])
 
 			switch u {
 			case 0:
 				westlings = append(westlings, uint32(index))
-			case maxCoord: // 动态边界
+			case maxCoord:
 				eastlings = append(eastlings, uint32(index))
 			}
 
@@ -882,30 +766,25 @@ func (t *QuantizedMeshTile) SetMesh(mesh *MeshData, rescaled bool) {
 				southlings = append(southlings, uint32(index))
 			}
 
-			us = append(us, encodeZigZag(u-prevu))
-			vs = append(vs, encodeZigZag(v-prevv))
-			hs = append(hs, encodeZigZag(h-prevh))
-
-			prevu = u
-			prevv = v
-			prevh = h
 			index++
 		}
 	}
 
-	t.Data.VertexCount = uint32(len(mesh.Vertices))
-	t.Data.U = us
-	t.Data.V = vs
-	t.Data.H = hs
-
-	if t.Data.VertexCount > 65535 {
-		inds := make([]uint32, len(mesh.Faces)*3)
+	// 设置索引数据
+	if vertexCount > 65535 {
+		inds := make([]uint32, len(indices))
 		for k, v := range indices {
 			inds[k] = uint32(v)
 		}
-		t.Index = &Indices32{IndicesData: inds, northlings: northlings, eastlings: eastlings, southlings: southlings, westlings: westlings}
+		t.Index = &Indices32{
+			IndicesData: inds,
+			northlings:  northlings,
+			eastlings:   eastlings,
+			southlings:  southlings,
+			westlings:   westlings,
+		}
 	} else {
-		inds := make([]uint16, len(mesh.Faces)*3)
+		inds := make([]uint16, len(indices))
 		for k, v := range indices {
 			inds[k] = uint16(v)
 		}
@@ -918,7 +797,6 @@ func (t *QuantizedMeshTile) SetMesh(mesh *MeshData, rescaled bool) {
 		for i := range eastlings {
 			el[i] = uint16(eastlings[i])
 		}
-
 		sl := make([]uint16, len(southlings))
 		for i := range southlings {
 			sl[i] = uint16(southlings[i])
@@ -928,8 +806,15 @@ func (t *QuantizedMeshTile) SetMesh(mesh *MeshData, rescaled bool) {
 			wl[i] = uint16(westlings[i])
 		}
 
-		t.Index = &Indices16{IndicesData: inds, northlings: nl, eastlings: el, southlings: sl, westlings: wl}
+		t.Index = &Indices16{
+			IndicesData: inds,
+			northlings:  nl,
+			eastlings:   el,
+			southlings:  sl,
+			westlings:   wl,
+		}
 	}
+
 	if len(mesh.Normals) > 0 {
 		nl := (*[]vec3d.T)(unsafe.Pointer(&mesh.Normals))
 		t.LightNormals = &OctEncodedVertexNormals{Norm: *nl}
@@ -942,7 +827,7 @@ func (t *QuantizedMeshTile) Read(reader io.ReadSeeker, flag TerrainExtensionFlag
 	if err != nil {
 		return err
 	}
-	if offset, err = t.Data.Read(reader, t.quantization); err != nil {
+	if offset, err = t.Data.Read(reader, t.quantization, t.Header.MinimumHeight, t.Header.MaximumHeight); err != nil {
 		return err
 	}
 	var alignment int
@@ -1049,7 +934,7 @@ func (t *QuantizedMeshTile) Write(writer io.Writer) error {
 	if err = binary.Write(writer, byteOrder, t.Header); err != nil {
 		return err
 	}
-	if offset, err = t.Data.Write(writer, t.quantization); err != nil {
+	if offset, err = t.Data.Write(writer, t.quantization, t.Header.MinimumHeight, t.Header.MaximumHeight); err != nil {
 		return err
 	}
 	if t.Data.VertexCount > 65535 {
