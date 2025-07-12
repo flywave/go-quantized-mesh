@@ -135,6 +135,7 @@ type VertexData struct {
 	H           []uint16
 }
 
+// 修改VertexData的Read方法
 func (v *VertexData) Read(reader io.Reader, quantization int) (int, error) {
 	offset := 0
 	buf := make([]byte, 4)
@@ -143,60 +144,133 @@ func (v *VertexData) Read(reader io.Reader, quantization int) (int, error) {
 		return 0, err
 	}
 	v.VertexCount = byteOrder.Uint32(buf)
+	vertexCount := int(v.VertexCount)
 
-	buf = make([]byte, v.VertexCount*2)
-	if _, err := reader.Read(buf); err != nil {
+	// 新增量化类型判断
+	readCoord := func() ([]uint16, error) {
+		if quantization == BITS12 {
+			// 12位压缩格式：每顶点3个分量，每个分量12位
+			bufSize := (vertexCount*3 + 1) / 2
+			buf := make([]byte, bufSize)
+			if _, err := io.ReadFull(reader, buf); err != nil {
+				return nil, err
+			}
+			return v.decodeArray12bit(buf, vertexCount*3), nil
+		}
+		// 非压缩格式：每个分量16位
+		buf := make([]byte, vertexCount*2)
+		if _, err := io.ReadFull(reader, buf); err != nil {
+			return nil, err
+		}
+		return v.decodeArray(buf, vertexCount), nil
+	}
+
+	// 读取坐标数据
+	var err error
+	if v.U, err = readCoord(); err != nil {
 		return 0, err
 	}
-	v.U = v.decodeArray(buf, int(v.VertexCount), quantization)
-
-	buf = make([]byte, v.VertexCount*2)
-	if _, err := reader.Read(buf); err != nil {
+	if v.V, err = readCoord(); err != nil {
 		return 0, err
 	}
-	v.V = v.decodeArray(buf, int(v.VertexCount), quantization)
-
-	buf = make([]byte, v.VertexCount*2)
-	if _, err := reader.Read(buf); err != nil {
+	if v.H, err = readCoord(); err != nil {
 		return 0, err
 	}
-	v.H = v.decodeArray(buf, int(v.VertexCount), quantization)
-	offset += int(2*v.VertexCount + 2*v.VertexCount + 2*v.VertexCount)
+
+	// 计算数据大小
+	if quantization == BITS12 {
+		offset += (vertexCount*3 + 1) / 2 * 3 // 3个分量
+	} else {
+		offset += vertexCount * 2 * 3 // 每个分量2字节
+	}
+
 	return offset, nil
 }
 
+// 新增12位解码方法
+func (v *VertexData) decodeArray12bit(buffer []byte, count int) []uint16 {
+	values := make([]uint16, count)
+	for i := 0; i < count; i += 2 {
+		idx := i * 3 / 2
+		if i+1 < count {
+			// 解包两个12位值到三个字节
+			values[i] = uint16(buffer[idx])<<4 | uint16(buffer[idx+1])>>4
+			values[i+1] = uint16(buffer[idx+1]&0x0F)<<8 | uint16(buffer[idx+2])
+		} else {
+			// 处理最后一个单独的值
+			values[i] = uint16(buffer[idx]) << 4
+		}
+	}
+	return values
+}
+
+// 修改Write方法
 func (v *VertexData) Write(writer io.Writer, quantization int) (int, error) {
-	buf := make([]byte, 4)
 	offset := 0
+	buf := make([]byte, 4)
 	byteOrder.PutUint32(buf, v.VertexCount)
 	offset += 4
 	if _, err := writer.Write(buf); err != nil {
 		return 0, err
 	}
-	buf = v.encodeArray(v.U, int(v.VertexCount), quantization)
-	if _, err := writer.Write(buf); err != nil {
+
+	vertexCount := int(v.VertexCount)
+
+	// 新增压缩写入逻辑
+	writeCoord := func(values []uint16) error {
+		var data []byte
+		if quantization == BITS12 {
+			data = v.encodeArray12bit(values)
+		} else {
+			data = v.encodeArray(values, vertexCount)
+		}
+		_, err := writer.Write(data)
+		return err
+	}
+
+	if err := writeCoord(v.U); err != nil {
 		return 0, err
 	}
-	buf = v.encodeArray(v.V, int(v.VertexCount), quantization)
-	if _, err := writer.Write(buf); err != nil {
+	if err := writeCoord(v.V); err != nil {
 		return 0, err
 	}
-	buf = v.encodeArray(v.H, int(v.VertexCount), quantization)
-	if _, err := writer.Write(buf); err != nil {
+	if err := writeCoord(v.H); err != nil {
 		return 0, err
 	}
-	offset += int(2*v.VertexCount + 2*v.VertexCount + 2*v.VertexCount)
+
+	// 计算写入字节数
+	if quantization == BITS12 {
+		offset += (vertexCount*3 + 1) / 2 * 3
+	} else {
+		offset += vertexCount * 2 * 3
+	}
+
 	return offset, nil
 }
 
-func (v *VertexData) encodeArray(values []uint16, vertexCount int, quantization int) []byte {
+// 新增12位编码方法
+func (v *VertexData) encodeArray12bit(values []uint16) []byte {
+	buf := make([]byte, (len(values)*3+1)/2)
+	for i := 0; i < len(values); i += 2 {
+		idx := i * 3 / 2
+		if i+1 < len(values) {
+			// 打包两个12位值到三个字节
+			buf[idx] = byte(values[i] >> 4)
+			buf[idx+1] = byte((values[i]&0x0F)<<4 | values[i+1]>>8)
+			buf[idx+2] = byte(values[i+1])
+		} else {
+			// 处理最后一个单独的值
+			buf[idx] = byte(values[i] >> 4)
+			buf[idx+1] = byte((values[i] & 0x0F) << 4)
+		}
+	}
+	return buf
+}
+
+func (v *VertexData) encodeArray(values []uint16, vertexCount int) []byte {
 	buf := make([]byte, vertexCount*2)
 	for i := 0; i < vertexCount; i++ {
 		val := values[i]
-		// 新增12位掩码处理
-		if quantization == BITS12 {
-			val &= 0x0FFF // 确保只保留低12位
-		}
 		byteOrder.PutUint16(buf[i*2:i*2+2], val)
 	}
 	return buf
@@ -206,16 +280,11 @@ func encodeZigZag(i int) uint16 {
 	return uint16((i >> 15) ^ (i << 1))
 }
 
-func (v *VertexData) decodeArray(buffer []byte, vertexCount int, quantization int) []uint16 {
+func (v *VertexData) decodeArray(buffer []byte, vertexCount int) []uint16 {
 	values := make([]uint16, vertexCount)
 	for i := 0; i < vertexCount; i++ {
 		val := byteOrder.Uint16(buffer[i*2 : i*2+2])
-		// 新增 12 位掩码处理
-		if quantization == BITS12 {
-			values[i] = val & 0x0FFF // 取低 12 位
-		} else {
-			values[i] = val
-		}
+		values[i] = val
 	}
 	return values
 }
