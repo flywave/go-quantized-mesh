@@ -635,18 +635,28 @@ func (t *QuantizedMeshTile) getVertices(bbox [2][3]float64) [][3]float64 {
 
 	for i := range vecs {
 		idx := i * elements
-
-		// 从数据缓冲区获取值
 		u := int(t.Data.Data[idx])
 		v := int(t.Data.Data[idx+1])
 		h := int(t.Data.Data[idx+2])
 
-		// 反量化坐标
-		x := dequantizeCoordinate(u, bbox[0][0], bbox[1][0], t.quantization)
-		y := dequantizeCoordinate(v, bbox[0][1], bbox[1][1], t.quantization)
-		z := dequantizeCoordinate(h, bbox[0][2], bbox[1][2], t.quantization)
+		if t.quantization == BITS12 {
+			// 解压BITS12格式
+			x := float64(u>>4) / 4095.0
+			y := float64(u&0xF) / 15.0
+			z := float64(v>>4) / 4095.0
 
-		vecs[i] = [3]float64{x, y, z}
+			vecs[i] = [3]float64{
+				bbox[0][0] + x*(bbox[1][0]-bbox[0][0]),
+				bbox[0][1] + y*(bbox[1][1]-bbox[0][1]),
+				bbox[0][2] + z*(bbox[1][2]-bbox[0][2]),
+			}
+		} else {
+			// BITS16模式
+			x := dequantizeCoordinate(u, bbox[0][0], bbox[1][0], BITS16)
+			y := dequantizeCoordinate(v, bbox[0][1], bbox[1][1], BITS16)
+			z := dequantizeCoordinate(h, bbox[0][2], bbox[1][2], BITS16)
+			vecs[i] = [3]float64{x, y, z}
+		}
 	}
 	return vecs
 }
@@ -697,19 +707,37 @@ func (t *QuantizedMeshTile) SetMesh(mesh *MeshData, rescaled bool) {
 	vertexCount := len(mesh.Vertices)
 	data := make([]uint16, vertexCount*elements)
 
+	bbox := mesh.BBox
+	minHeight := float64(t.Header.MinimumHeight)
+	maxHeight := float64(t.Header.MaximumHeight)
+
 	// 处理每个顶点
 	for i, vert := range mesh.Vertices {
 		idx := i * elements
 
-		// 量化坐标
-		u := quantizeCoordinate(vert[0], mesh.BBox[0][0], mesh.BBox[1][0], t.quantization)
-		v := quantizeCoordinate(vert[1], mesh.BBox[0][1], mesh.BBox[1][1], t.quantization)
-		h := quantizeCoordinate(vert[2], mesh.BBox[0][2], mesh.BBox[1][2], t.quantization)
+		// 计算归一化值
+		x_norm := (vert[0] - bbox[0][0]) / (bbox[1][0] - bbox[0][0])
+		y_norm := (vert[1] - bbox[0][1]) / (bbox[1][1] - bbox[0][1])
+		z_norm := (vert[2] - bbox[0][2]) / (bbox[1][2] - bbox[0][2])
+		height_norm := (vert[2] - minHeight) / (maxHeight - minHeight)
+		u_norm := x_norm
+		v_norm := y_norm
 
-		// 存储原始量化值 (稍后执行差分编码)
-		data[idx] = uint16(u)
-		data[idx+1] = uint16(v)
-		data[idx+2] = uint16(h)
+		if t.quantization == BITS12 {
+			// 压缩为12位格式: [xy, zh, uv]
+			xy := (uint16(x_norm*4095) << 4) | uint16(y_norm*15)
+			zh := (uint16(z_norm*4095) << 4) | uint16(height_norm*15)
+			uv := (uint16(u_norm*4095) << 4) | uint16(v_norm*15)
+
+			data[idx] = uint16(xy)
+			data[idx+1] = uint16(zh)
+			data[idx+2] = uint16(uv)
+		} else {
+			// BITS16模式直接存储
+			data[idx] = uint16(quantizeCoordinate(vert[0], bbox[0][0], bbox[1][0], BITS16))
+			data[idx+1] = uint16(quantizeCoordinate(vert[1], bbox[0][1], bbox[1][1], BITS16))
+			data[idx+2] = uint16(quantizeCoordinate(vert[2], bbox[0][2], bbox[1][2], BITS16))
+		}
 	}
 
 	// 设置顶点数据
